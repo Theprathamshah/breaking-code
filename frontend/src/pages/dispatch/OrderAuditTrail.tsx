@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@clerk/clerk-react'
 import { X, ChevronDown, ChevronRight, Activity, Zap } from 'lucide-react'
@@ -13,31 +14,33 @@ interface OrderAuditTrailProps {
 }
 
 const ACTOR_COLORS: Record<string, string> = {
-  system: 'var(--frost)',
-  admin: 'var(--amber)',
-  agent: 'var(--volt)',
-  seller: 'var(--ice)',
+  system:   'var(--frost)',
+  admin:    'var(--amber)',
+  agent:    'var(--volt)',
+  seller:   'var(--ice)',
   customer: 'var(--signal)',
 }
 
 const EVENT_LABELS: Record<string, string> = {
-  'order.created': 'Order Created',
+  'order.created':        'Order Created',
   'order.status_changed': 'Status Changed',
-  'order.delivered': 'Delivered',
-  'order.failed': 'Delivery Failed',
-  'order.rescheduled': 'Rescheduled',
-  'agent.assigned': 'Agent Assigned',
-  'route.activated': 'Route Activated',
-  'stop.departed': 'Departed to Stop',
-  'stop.arrived': 'Arrived at Stop',
-  'agent.gps_ping': 'GPS Ping',
-  'otp.requested': 'OTP Requested',
-  'otp.verified': 'OTP Verified',
-  'otp.failed': 'OTP Failed',
-  'photo.uploaded': 'Photo Uploaded',
-  'feedback.submitted': 'Feedback Submitted',
-  'fare.settled': 'Fare Settled',
+  'order.delivered':      'Delivered',
+  'order.failed':         'Delivery Failed',
+  'order.rescheduled':    'Rescheduled',
+  'agent.assigned':       'Agent Assigned',
+  'route.activated':      'Route Activated',
+  'stop.departed':        'Departed to Stop',
+  'stop.arrived':         'Arrived at Stop',
+  'agent.gps_ping':       'GPS Ping',
+  'otp.requested':        'OTP Requested',
+  'otp.verified':         'OTP Verified',
+  'otp.failed':           'OTP Failed',
+  'photo.uploaded':       'Photo Uploaded',
+  'feedback.submitted':   'Feedback Submitted',
+  'fare.settled':         'Fare Settled',
 }
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export function OrderAuditTrail({ orderId, customerName, onClose }: OrderAuditTrailProps) {
   const { getToken } = useAuth()
@@ -69,198 +72,211 @@ export function OrderAuditTrail({ orderId, customerName, onClose }: OrderAuditTr
     },
   })
 
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 50,
-        display: 'flex',
-        justifyContent: 'flex-end',
-      }}
-    >
-      {/* Backdrop */}
-      <div
-        style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }}
-        onClick={onClose}
-      />
-
-      {/* Panel */}
+  return createPortal(
+    <>
+      {/* ── Audit trail dialog ───────────────────────────────────────────────── */}
       <div
         style={{
-          position: 'relative',
-          width: 480,
-          maxWidth: '100vw',
-          height: '100%',
-          background: 'var(--void)',
-          borderLeft: '1px solid var(--rim)',
+          position: 'fixed',
+          inset: 0,
+          zIndex: 50,
           display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px 16px',
         }}
       >
-        {/* Header */}
+        {/* Backdrop */}
+        <div
+          style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)' }}
+          onClick={onClose}
+        />
+
+        {/* Dialog */}
         <div
           style={{
-            padding: '20px 20px 16px',
-            borderBottom: '1px solid var(--rim)',
+            position: 'relative',
+            width: 560,
+            maxWidth: '100%',
+            // Key: explicit height + flex column so the list can scroll
+            height: 'min(680px, 88vh)',
             display: 'flex',
-            alignItems: 'flex-start',
-            gap: 12,
+            flexDirection: 'column',
+            background: 'var(--void)',
+            border: '1px solid var(--rim)',
+            borderRadius: 12,
+            overflow: 'hidden',
           }}
         >
+          {/* Header — fixed, never scrolls */}
           <div
             style={{
-              width: 32,
-              height: 32,
-              background: 'rgba(200,255,87,0.12)',
-              border: '1px solid rgba(200,255,87,0.3)',
-              borderRadius: 8,
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
+              gap: 12,
+              padding: '16px 20px',
+              borderBottom: '1px solid var(--rim)',
               flexShrink: 0,
             }}
           >
-            <Activity size={16} color="var(--volt)" />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--chalk)', marginBottom: 2 }}>
-              Audit Trail
-            </p>
-            <p style={{ fontSize: 12, color: 'var(--frost)', fontFamily: 'var(--font-mono)' }}>
-              {customerName} · {orderId.slice(-10).toUpperCase()}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: 4,
-              color: 'var(--muted)',
-              display: 'flex',
-            }}
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Filter bar */}
-        <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--rim)' }}>
-          <select
-            value={eventTypeFilter}
-            onChange={(e) => setEventTypeFilter(e.target.value)}
-            style={{
-              background: 'var(--shell)',
-              border: '1px solid var(--rim)',
-              borderRadius: 6,
-              color: 'var(--chalk)',
-              fontSize: 12,
-              padding: '6px 10px',
-              width: '100%',
-              fontFamily: 'var(--font-body)',
-            }}
-          >
-            <option value="">All event types</option>
-            {Object.entries(EVENT_LABELS).map(([v, label]) => (
-              <option key={v} value={v}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Event list */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-          {isLoading && (
-            <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 48 }}>
-              <Spinner size={24} />
+            <div
+              style={{
+                width: 30,
+                height: 30,
+                background: 'rgba(200,255,87,0.12)',
+                border: '1px solid rgba(200,255,87,0.25)',
+                borderRadius: 8,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <Activity size={15} color="var(--volt)" />
             </div>
-          )}
 
-          {isError && (
-            <p style={{ fontSize: 13, color: 'var(--signal)', padding: '24px 20px', textAlign: 'center' }}>
-              Failed to load events
-            </p>
-          )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--chalk)', lineHeight: 1 }}>
+                Audit Trail
+              </p>
+              <p style={{ fontSize: 11, color: 'var(--frost)', fontFamily: 'var(--font-mono)', marginTop: 3 }}>
+                {customerName} · {orderId.slice(-10).toUpperCase()}
+              </p>
+            </div>
 
-          {data?.events.length === 0 && (
-            <p style={{ fontSize: 13, color: 'var(--muted)', padding: '24px 20px', textAlign: 'center' }}>
-              No events found
-            </p>
-          )}
+            <button
+              onClick={onClose}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--muted)',
+                display: 'flex',
+                padding: 4,
+                borderRadius: 4,
+                flexShrink: 0,
+              }}
+            >
+              <X size={16} />
+            </button>
+          </div>
 
-          {data?.events.map((ev) => (
-            <EventRow
-              key={ev.id}
-              event={ev}
-              expanded={expandedId === ev.id}
-              onToggle={() => setExpandedId(expandedId === ev.id ? null : ev.id)}
-            />
-          ))}
-        </div>
+          {/* Filter bar — fixed */}
+          <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--rim)', flexShrink: 0 }}>
+            <select
+              value={eventTypeFilter}
+              onChange={(e) => setEventTypeFilter(e.target.value)}
+              style={{
+                background: 'var(--shell)',
+                border: '1px solid var(--rim)',
+                borderRadius: 6,
+                color: 'var(--chalk)',
+                fontSize: 12,
+                padding: '6px 10px',
+                width: '100%',
+                fontFamily: 'var(--font-body)',
+                outline: 'none',
+              }}
+            >
+              <option value="">All event types</option>
+              {Object.entries(EVENT_LABELS).map(([v, label]) => (
+                <option key={v} value={v}>{label}</option>
+              ))}
+            </select>
+          </div>
 
-        {/* Footer: event count + Fire Event button */}
-        <div
-          style={{
-            borderTop: '1px solid var(--rim)',
-            flexShrink: 0,
-          }}
-        >
+          {/* Event list — THIS is the scrollable region.
+              min-height: 0 is essential: without it a flex child won't shrink
+              below its content size, so overflow-y: auto never kicks in. */}
           <div
             style={{
-              padding: '10px 20px',
+              flex: 1,
+              minHeight: 0,
+              overflowY: 'auto',
+            }}
+          >
+            {isLoading && (
+              <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 48 }}>
+                <Spinner size={22} />
+              </div>
+            )}
+            {isError && (
+              <p style={{ fontSize: 13, color: 'var(--signal)', padding: '24px 20px', textAlign: 'center' }}>
+                Failed to load events
+              </p>
+            )}
+            {!isLoading && data?.events.length === 0 && (
+              <p style={{ fontSize: 13, color: 'var(--muted)', padding: '24px 20px', textAlign: 'center' }}>
+                No events found
+              </p>
+            )}
+            {data?.events.map((ev) => (
+              <EventRow
+                key={ev.id}
+                event={ev}
+                expanded={expandedId === ev.id}
+                onToggle={() => setExpandedId(expandedId === ev.id ? null : ev.id)}
+              />
+            ))}
+          </div>
+
+          {/* Footer — fixed, always visible */}
+          <div
+            style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
+              padding: '10px 20px',
+              borderTop: '1px solid var(--rim)',
+              flexShrink: 0,
+              background: 'var(--void)',
             }}
           >
             <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-              {data ? `${data.events.length} event${data.events.length !== 1 ? 's' : ''}` : ''}
-              {data?.nextCursor ? ' · scroll for more' : ''}
+              {data
+                ? `${data.events.length} event${data.events.length !== 1 ? 's' : ''}${data.nextCursor ? ' · more available' : ''}`
+                : ''}
             </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setFireOpen((o) => !o)}
-            >
+            <Button variant="ghost" size="sm" onClick={() => setFireOpen(true)}>
               <Zap size={12} />
-              {fireOpen ? 'Cancel' : 'Fire Event'}
+              Fire Event
             </Button>
           </div>
-
-          {/* Fire event form */}
-          {fireOpen && (
-            <FireEventForm
-              orderId={orderId}
-              loading={fireMutation.isPending}
-              error={fireMutation.error?.message ?? null}
-              onSubmit={(payload) => fireMutation.mutate(payload)}
-            />
-          )}
         </div>
       </div>
-    </div>
+
+      {/* ── Fire Event dialog — separate modal on top (z-index: 60) ─────────── */}
+      {fireOpen && (
+        <FireEventDialog
+          orderId={orderId}
+          loading={fireMutation.isPending}
+          error={fireMutation.error?.message ?? null}
+          onSubmit={(payload) => fireMutation.mutate(payload)}
+          onClose={() => setFireOpen(false)}
+        />
+      )}
+    </>,
+    document.body,
   )
 }
 
-// ── Fire Event Form ───────────────────────────────────────────────────────────
+// ── Fire Event dialog ─────────────────────────────────────────────────────────
 
 const ACTOR_OPTIONS = ['system', 'admin', 'agent', 'seller', 'customer'] as const
-const EVENT_TYPE_OPTIONS = Object.keys(EVENT_LABELS) as (keyof typeof EVENT_LABELS)[]
+const EVENT_TYPE_OPTIONS = Object.keys(EVENT_LABELS)
 
-function FireEventForm({
+function FireEventDialog({
   orderId,
   loading,
   error,
   onSubmit,
+  onClose,
 }: {
   orderId: string
   loading: boolean
   error: string | null
   onSubmit: (payload: AppendEventPayload) => void
+  onClose: () => void
 }) {
   const [eventType, setEventType] = useState(EVENT_TYPE_OPTIONS[0])
   const [actorType, setActorType] = useState<AppendEventPayload['actorType']>('admin')
@@ -285,86 +301,174 @@ function FireEventForm({
     borderRadius: 6,
     color: 'var(--chalk)',
     fontSize: 12,
-    padding: '6px 10px',
+    padding: '7px 10px',
     width: '100%',
     fontFamily: 'var(--font-body)',
     boxSizing: 'border-box',
+    outline: 'none',
   }
 
   return (
     <div
       style={{
-        padding: '14px 20px 16px',
-        borderTop: '1px solid var(--rim)',
-        background: 'rgba(200,255,87,0.03)',
+        position: 'fixed',
+        inset: 0,
+        zIndex: 60,
         display: 'flex',
-        flexDirection: 'column',
-        gap: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px 16px',
       }}
     >
-      <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--volt)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-        Fire Event
-      </p>
+      {/* Backdrop — closes only the fire dialog, audit trail stays */}
+      <div
+        style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }}
+        onClick={onClose}
+      />
 
-      {/* Event type + actor side by side */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <div style={{ flex: 2 }}>
-          <label style={{ fontSize: 10, color: 'var(--frost)', display: 'block', marginBottom: 4 }}>
-            Event type
-          </label>
-          <select value={eventType} onChange={(e) => setEventType(e.target.value)} style={inputStyle}>
-            {EVENT_TYPE_OPTIONS.map((v) => (
-              <option key={v} value={v}>{EVENT_LABELS[v]}</option>
-            ))}
-          </select>
-        </div>
-        <div style={{ flex: 1 }}>
-          <label style={{ fontSize: 10, color: 'var(--frost)', display: 'block', marginBottom: 4 }}>
-            Actor
-          </label>
-          <select
-            value={actorType}
-            onChange={(e) => setActorType(e.target.value as AppendEventPayload['actorType'])}
-            style={inputStyle}
-          >
-            {ACTOR_OPTIONS.map((a) => (
-              <option key={a} value={a}>{a}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Metadata */}
-      <div>
-        <label style={{ fontSize: 10, color: 'var(--frost)', display: 'block', marginBottom: 4 }}>
-          Metadata (JSON)
-        </label>
-        <textarea
-          value={metaRaw}
-          onChange={(e) => setMetaRaw(e.target.value)}
-          rows={3}
+      <div
+        style={{
+          position: 'relative',
+          width: 420,
+          maxWidth: '100%',
+          background: 'var(--void)',
+          border: '1px solid var(--rim)',
+          borderRadius: 12,
+          overflow: 'hidden',
+        }}
+      >
+        {/* Header */}
+        <div
           style={{
-            ...inputStyle,
-            fontFamily: 'var(--font-mono)',
-            resize: 'vertical',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '14px 18px',
+            borderBottom: '1px solid var(--rim)',
           }}
-        />
-        {metaError && (
-          <p style={{ fontSize: 11, color: 'var(--signal)', marginTop: 3 }}>{metaError}</p>
-        )}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div
+              style={{
+                width: 26,
+                height: 26,
+                background: 'rgba(255,184,0,0.12)',
+                border: '1px solid rgba(255,184,0,0.25)',
+                borderRadius: 6,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Zap size={13} color="var(--amber)" />
+            </div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--chalk)' }}>Fire Event</p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', display: 'flex', padding: 4 }}
+          >
+            <X size={15} />
+          </button>
+        </div>
+
+        {/* Form */}
+        <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Event type */}
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--frost)', display: 'block', marginBottom: 5 }}>
+              Event type
+            </label>
+            <select value={eventType} onChange={(e) => setEventType(e.target.value)} style={inputStyle}>
+              {EVENT_TYPE_OPTIONS.map((v) => (
+                <option key={v} value={v}>{EVENT_LABELS[v]}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Actor */}
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--frost)', display: 'block', marginBottom: 5 }}>
+              Actor
+            </label>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {ACTOR_OPTIONS.map((a) => (
+                <button
+                  key={a}
+                  onClick={() => setActorType(a)}
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 500,
+                    padding: '4px 10px',
+                    borderRadius: 4,
+                    border: `1px solid ${actorType === a ? ACTOR_COLORS[a] : 'var(--rim)'}`,
+                    background: actorType === a ? `${ACTOR_COLORS[a]}18` : 'transparent',
+                    color: actorType === a ? ACTOR_COLORS[a] : 'var(--muted)',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-mono)',
+                    letterSpacing: '0.04em',
+                    transition: 'all 0.1s',
+                  }}
+                >
+                  {a}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Metadata */}
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--frost)', display: 'block', marginBottom: 5 }}>
+              Metadata <span style={{ color: 'var(--muted)' }}>(JSON)</span>
+            </label>
+            <textarea
+              value={metaRaw}
+              onChange={(e) => setMetaRaw(e.target.value)}
+              rows={4}
+              spellCheck={false}
+              style={{
+                ...inputStyle,
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11,
+                resize: 'vertical',
+                lineHeight: 1.6,
+              }}
+            />
+            {metaError && (
+              <p style={{ fontSize: 11, color: 'var(--signal)', marginTop: 4 }}>{metaError}</p>
+            )}
+          </div>
+
+          {error && (
+            <p style={{ fontSize: 11, color: 'var(--signal)' }}>{error}</p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: 8,
+            padding: '12px 18px',
+            borderTop: '1px solid var(--rim)',
+            background: 'var(--shell)',
+          }}
+        >
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" size="sm" onClick={handleSubmit} loading={loading}>
+            <Zap size={12} />
+            Send
+          </Button>
+        </div>
       </div>
-
-      {error && (
-        <p style={{ fontSize: 11, color: 'var(--signal)' }}>{error}</p>
-      )}
-
-      <Button variant="primary" size="sm" onClick={handleSubmit} loading={loading}>
-        <Zap size={12} />
-        Send
-      </Button>
     </div>
   )
 }
+
+// ── Event Row ─────────────────────────────────────────────────────────────────
 
 function EventRow({
   event,
@@ -382,17 +486,17 @@ function EventRow({
     <div
       style={{
         borderBottom: '1px solid var(--rim)',
-        padding: '10px 20px',
+        padding: '9px 20px',
         cursor: hasMetadata ? 'pointer' : 'default',
       }}
       onClick={hasMetadata ? onToggle : undefined}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {/* Actor badge */}
         <span
           style={{
             fontSize: 9,
-            fontWeight: 600,
+            fontWeight: 700,
             letterSpacing: '0.08em',
             textTransform: 'uppercase',
             color: actorColor,
@@ -401,46 +505,37 @@ function EventRow({
             padding: '1px 5px',
             flexShrink: 0,
             fontFamily: 'var(--font-mono)',
-            opacity: 0.85,
+            opacity: 0.9,
           }}
         >
           {event.actorType}
         </span>
 
         {/* Event type */}
-        <span style={{ fontSize: 13, color: 'var(--chalk)', flex: 1, minWidth: 0 }}>
+        <span style={{ fontSize: 12, color: 'var(--chalk)', flex: 1, minWidth: 0 }}>
           {EVENT_LABELS[event.eventType] ?? event.eventType}
         </span>
 
         {/* Timestamp */}
-        <span
-          style={{
-            fontSize: 11,
-            color: 'var(--frost)',
-            fontFamily: 'var(--font-mono)',
-            flexShrink: 0,
-          }}
-        >
+        <span style={{ fontSize: 10, color: 'var(--frost)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
           {fmtTs(event.createdAt)}
         </span>
 
-        {/* Expand toggle */}
         {hasMetadata && (
-          <span style={{ color: 'var(--muted)', flexShrink: 0 }}>
-            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          <span style={{ color: 'var(--muted)', flexShrink: 0, display: 'flex' }}>
+            {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </span>
         )}
       </div>
 
-      {/* Expanded metadata */}
       {expanded && hasMetadata && (
         <pre
           style={{
-            marginTop: 10,
+            marginTop: 8,
             background: 'var(--shell)',
             border: '1px solid var(--rim)',
             borderRadius: 6,
-            padding: '10px 12px',
+            padding: '8px 10px',
             fontSize: 11,
             fontFamily: 'var(--font-mono)',
             color: 'var(--frost)',
@@ -453,16 +548,8 @@ function EventRow({
         </pre>
       )}
 
-      {/* GPS coords if present */}
       {event.lat != null && event.lng != null && (
-        <p
-          style={{
-            marginTop: 4,
-            fontSize: 10,
-            fontFamily: 'var(--font-mono)',
-            color: 'var(--muted)',
-          }}
-        >
+        <p style={{ marginTop: 3, fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
           {event.lat.toFixed(5)}, {event.lng.toFixed(5)}
         </p>
       )}
