@@ -9,6 +9,7 @@ import {
   IndianRupee,
   Navigation,
 } from 'lucide-react'
+import { Shell } from '../../components/layout/Shell'
 import { Button } from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
 import { Spinner } from '../../components/ui/Spinner'
@@ -57,224 +58,230 @@ export function AgentHome() {
   })
 
   const stops = routeData?.stops ?? []
+  const routeId = routeData?.id ?? null
   const completed = stops.filter((s) => s.status === 'delivered').length
   const total = stops.length
 
   return (
-    <div
-      style={{
-        background: 'var(--obsidian)',
-        minHeight: '100dvh',
-        maxWidth: 480,
-        margin: '0 auto',
-        fontFamily: 'var(--font-body)',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      {/* Top bar */}
-      <header
+    <Shell title="Agent View">
+      <div
         style={{
-          padding: '16px 16px 12px',
-          borderBottom: '1px solid var(--rim)',
-          background: 'var(--void)',
+          maxWidth: 480,
+          width: '100%',
+          margin: '0 auto',
+          fontFamily: 'var(--font-body)',
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'var(--obsidian)',
+          border: '1px solid var(--rim)',
+          borderRadius: 'var(--r-lg)',
+          overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: '50%',
-                background: 'var(--shell)',
-                border: '1px solid var(--rim)',
-                overflow: 'hidden',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
+        {/* Top bar */}
+        <header
+          style={{
+            padding: '16px 16px 12px',
+            borderBottom: '1px solid var(--rim)',
+            background: 'var(--void)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  background: 'var(--shell)',
+                  border: '1px solid var(--rim)',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {user?.imageUrl ? (
+                  <img src={user.imageUrl} width={32} height={32} alt="" />
+                ) : (
+                  <span style={{ fontSize: 14, color: 'var(--frost)', fontWeight: 600 }}>
+                    {user?.firstName?.[0] ?? 'A'}
+                  </span>
+                )}
+              </div>
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--chalk)' }}>
+                  {user?.firstName ?? 'Agent'}
+                </p>
+                <p style={{ fontSize: 11, color: 'var(--frost)' }}>
+                  {new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+                </p>
+              </div>
+            </div>
+
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => goOnlineMutation.mutate('available')}
+              loading={goOnlineMutation.isPending}
             >
-              {user?.imageUrl ? (
-                <img src={user.imageUrl} width={32} height={32} alt="" />
-              ) : (
-                <span style={{ fontSize: 14, color: 'var(--frost)', fontWeight: 600 }}>
-                  {user?.firstName?.[0] ?? 'A'}
-                </span>
-              )}
-            </div>
-            <div>
-              <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--chalk)' }}>
-                {user?.firstName ?? 'Agent'}
-              </p>
-              <p style={{ fontSize: 11, color: 'var(--frost)' }}>
-                {new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
-              </p>
-            </div>
+              Go Online
+            </Button>
           </div>
 
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => goOnlineMutation.mutate('available')}
-            loading={goOnlineMutation.isPending}
-          >
-            Go Online
-          </Button>
-        </div>
+          {/* Stats row */}
+          {total > 0 && (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: 8,
+                marginTop: 14,
+              }}
+            >
+              <MiniStat label="Stops" value={`${completed}/${total}`} />
+              <MiniStat
+                label="Distance"
+                value={`${routeData?.total_distance_km ?? 0} km`}
+              />
+              <MiniStat
+                label="Earnings"
+                value={`₹${(completed * 47).toFixed(0)}`}
+                accent
+              />
+            </div>
+          )}
+        </header>
 
-        {/* Stats row */}
+        {/* Route progress bar */}
         {total > 0 && (
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: 8,
-              marginTop: 14,
+              height: 3,
+              background: 'var(--rim)',
+              position: 'relative',
             }}
           >
-            <MiniStat label="Stops" value={`${completed}/${total}`} />
-            <MiniStat
-              label="Distance"
-              value={`${routeData?.total_distance_km ?? 0} km`}
-            />
-            <MiniStat
-              label="Earnings"
-              value={`₹${(completed * 47).toFixed(0)}`}
-              accent
+            <div
+              style={{
+                height: '100%',
+                width: `${(completed / total) * 100}%`,
+                background: 'var(--volt)',
+                transition: 'width var(--dur-slow) var(--ease-out)',
+              }}
             />
           </div>
         )}
-      </header>
 
-      {/* Route progress bar */}
-      {total > 0 && (
-        <div
-          style={{
-            height: 3,
-            background: 'var(--rim)',
-            position: 'relative',
-          }}
-        >
-          <div
-            style={{
-              height: '100%',
-              width: `${(completed / total) * 100}%`,
-              background: 'var(--volt)',
-              transition: 'width var(--dur-slow) var(--ease-out)',
-            }}
-          />
-        </div>
-      )}
-
-      {/* Body */}
-      <main style={{ flex: 1, overflow: 'auto', padding: 16 }}>
-        {routeLoading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}>
-            <Spinner />
-          </div>
-        ) : stops.length === 0 ? (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              paddingTop: 80,
-              gap: 16,
-              textAlign: 'center',
-            }}
-          >
-            <Truck size={40} color="var(--muted)" />
-            <div>
-              <p style={{ fontSize: 16, fontWeight: 500, color: 'var(--chalk)', marginBottom: 6 }}>
-                No route assigned
-              </p>
-              <p style={{ fontSize: 13, color: 'var(--frost)' }}>
-                Go online and wait for the dispatcher to assign a route.
-              </p>
+        {/* Body */}
+        <main style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+          {routeLoading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}>
+              <Spinner />
             </div>
-          </div>
-        ) : (
-          <div>
-            <p
+          ) : stops.length === 0 ? (
+            <div
               style={{
-                fontSize: 11,
-                fontWeight: 500,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                color: 'var(--frost)',
-                marginBottom: 12,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingTop: 80,
+                gap: 16,
+                textAlign: 'center',
               }}
             >
-              My Route — {total} stops
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {stops.map((stop) => (
-                <StopCard
-                  key={stop.id}
-                  stop={stop}
-                  onOpen={() => setSelectedStop(stop)}
-                />
-              ))}
+              <Truck size={40} color="var(--muted)" />
+              <div>
+                <p style={{ fontSize: 16, fontWeight: 500, color: 'var(--chalk)', marginBottom: 6 }}>
+                  No route assigned
+                </p>
+                <p style={{ fontSize: 13, color: 'var(--frost)' }}>
+                  Go online and wait for the dispatcher to assign a route.
+                </p>
+              </div>
             </div>
-          </div>
-        )}
-      </main>
+          ) : (
+            <div>
+              <p
+                style={{
+                  fontSize: 11,
+                  fontWeight: 500,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: 'var(--frost)',
+                  marginBottom: 12,
+                }}
+              >
+                My Route — {total} stops
+              </p>
 
-      {/* Stop detail sheet */}
-      {selectedStop && routeId && (
-        <StopSheet
-          stop={selectedStop}
-          routeId={routeId}
-          onClose={() => setSelectedStop(null)}
-          onDeparted={() => {
-            setSelectedStop(null)
-            qc.invalidateQueries({ queryKey: ['agent-route'] })
-          }}
-        />
-      )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {stops.map((stop) => (
+                  <StopCard
+                    key={stop.id}
+                    stop={stop}
+                    onOpen={() => setSelectedStop(stop)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </main>
 
-      {/* Bottom nav */}
-      <nav
-        style={{
-          borderTop: '1px solid var(--rim)',
-          background: 'var(--void)',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-        }}
-      >
-        {[
-          { icon: <MapPin size={20} />, label: 'Route' },
-          { icon: <Radio size={20} />, label: 'Live', accent: true },
-          { icon: <IndianRupee size={20} />, label: 'Earnings' },
-        ].map((item) => (
-          <button
-            key={item.label}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 4,
-              padding: '12px 0',
-              color: item.accent ? 'var(--volt)' : 'var(--frost)',
-              fontSize: 10,
-              fontWeight: 500,
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
-              cursor: 'pointer',
-              fontFamily: 'var(--font-body)',
+        {/* Stop detail sheet */}
+        {selectedStop && routeId && (
+          <StopSheet
+            stop={selectedStop}
+            routeId={routeId}
+            onClose={() => setSelectedStop(null)}
+            onDeparted={() => {
+              setSelectedStop(null)
+              qc.invalidateQueries({ queryKey: ['agent-route'] })
             }}
-          >
-            {item.icon}
-            {item.label}
-          </button>
-        ))}
-      </nav>
-    </div>
+          />
+        )}
+
+        {/* Bottom nav */}
+        <nav
+          style={{
+            borderTop: '1px solid var(--rim)',
+            background: 'var(--void)',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+          }}
+        >
+          {[
+            { icon: <MapPin size={20} />, label: 'Route' },
+            { icon: <Radio size={20} />, label: 'Live', accent: true },
+            { icon: <IndianRupee size={20} />, label: 'Earnings' },
+          ].map((item) => (
+            <button
+              key={item.label}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 4,
+                padding: '12px 0',
+                color: item.accent ? 'var(--volt)' : 'var(--frost)',
+                fontSize: 10,
+                fontWeight: 500,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+                fontFamily: 'var(--font-body)',
+              }}
+            >
+              {item.icon}
+              {item.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+    </Shell>
   )
 }
 
