@@ -1,5 +1,140 @@
 # HLD — Smart Last Mile Delivery System
 
+## 0. Team Domain Split (5 Engineers)
+
+### Domain Map
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         5 DOMAINS — CLEAN BOUNDARIES                        │
+├──────────────────┬──────────────────┬──────────────────┬────────────────────┤
+│   DOMAIN 1       │   DOMAIN 2       │   DOMAIN 3       │   DOMAIN 4         │
+│   Seller &       │   Dispatch &     │   Delivery       │   Real-time        │
+│   Order Intake   │   Route Ops      │   Agent          │   Tracking &       │
+│                  │                  │                  │   Comms            │
+├──────────────────┴──────────────────┴──────────────────┴────────────────────┤
+│                              DOMAIN 5                                        │
+│                        Fare, Billing & Analytics                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Domain 1 — Seller & Order Intake
+
+**Owns:** Everything a seller touches from signup to order submission.
+
+| | |
+|---|---|
+| **Interfaces** | Seller Dashboard (CF Pages), Onboarding wizard, Single order form, Bulk CSV upload, API key management, Webhook config |
+| **CF Products** | Workers (order intake routes), D1 (`sellers`, `orders`, `order_batches`), R2 (raw CSV storage), Queues (producer — enqueue `order.created`), KV (seller API key cache) |
+| **API Routes** | `POST /api/orders`, `POST /api/orders/bulk`, `POST /api/orders/bulk/:id/confirm`, `GET /api/orders`, `GET /api/orders/:id`, `DELETE /api/orders/:id`, `POST /api/sellers/register`, `GET /api/sellers/me`, `PUT /api/sellers/webhook`, `POST /api/sellers/api-key/rotate` |
+| **D1 Tables** | `sellers`, `orders` (create + read), `order_batches` |
+| **Publishes to Queue** | `order.created` (consumed by Domain 2) |
+| **Depends on** | Domain 5 for quoted fare preview on order form |
+
+---
+
+### Domain 2 — Dispatch & Route Operations
+
+**Owns:** Everything between an order arriving and an agent departing the hub.
+
+| | |
+|---|---|
+| **Interfaces** | Admin/Dispatcher Dashboard (CF Pages) — route planner, agent map, order assignment view |
+| **CF Products** | Workers (route + agent routes), D1 (`routes`, `route_stops`, `delivery_agents`, `hubs`), Workers AI (TSP route optimization, ETA prediction), Queues (consumer — `order.created`; producer — `agent.assigned`, `route.activated`), KV (ETA cache per order), Workflows (`OrderLifecycleWorkflow` — geocode → assign → optimize → notify) |
+| **API Routes** | `POST /api/routes/optimize`, `GET /api/routes/:id`, `PATCH /api/routes/:id/activate`, `GET /api/agents`, `PATCH /api/agents/:id/status` |
+| **D1 Tables** | `routes`, `route_stops`, `delivery_agents` |
+| **Consumes from Queue** | `order.created` |
+| **Publishes to Queue** | `agent.assigned`, `route.activated` |
+| **Depends on** | Domain 3 for agent GPS (read `delivery_agents.current_lat/lng`), Domain 5 for fare config when computing ETAs |
+
+---
+
+### Domain 3 — Delivery Agent
+
+**Owns:** Everything the delivery partner does from going online to completing a stop.
+
+| | |
+|---|---|
+| **Interfaces** | Agent PWA (CF Pages) — route list, stop detail, en-route screen, delivery attempt (OTP + POD photo), earnings tab |
+| **CF Products** | Workers (stop action routes, WebSocket upgrade), D1 (`route_stops` write, `delivery_events` write, `delivery_agents` GPS write), R2 (POD photo upload via presigned URL), Queues (producer — `stop.departed`, `order.delivered`, `order.failed`), KV (`tracking_mode` flag write) |
+| **API Routes** | `POST /api/stops/:id/depart`, `POST /api/stops/:id/arrived`, `POST /api/stops/:id/attempt`, `PUT /api/stops/:id/photo`, `WS /ws/agent/:agentId` |
+| **D1 Tables** | `route_stops` (status updates), `delivery_events`, `delivery_agents` (GPS + status) |
+| **Publishes to Queue** | `stop.departed` (triggers Domain 4 live tracking), `order.delivered`, `order.failed` |
+| **Depends on** | Domain 4 owns `DeliverySessionDO` — agent WS connects into it; Domain 5 for per-stop earnings display |
+
+---
+
+### Domain 4 — Real-time Tracking & Communications
+
+**Owns:** All live state, WebSocket infrastructure, customer-facing portal, and all outbound notifications.
+
+| | |
+|---|---|
+| **Interfaces** | Customer Tracking Portal (CF Pages) — milestone timeline (UPS mode) + live map (Blinkit/Uber mode); Email notifications at every lifecycle event |
+| **CF Products** | Durable Objects (`DeliverySessionDO` — GPS fan-out to customers), Workers (WebSocket upgrade, public tracking routes), Email Workers (all transactional emails), Queues (consumer — `order.created`, `agent.assigned`, `stop.departed`, `order.delivered`, `order.failed`, `eta.updated`), KV (`tracking_mode` read, HMAC token store) |
+| **API Routes** | `WS /ws/track/:orderId`, `GET /track/:token`, `POST /track/:token/verify-otp` |
+| **D1 Tables** | `customer_comms` (log all sent notifications) |
+| **Consumes from Queue** | Every event published by Domains 1, 2, 3 |
+| **Publishes to Queue** | `eta.updated` (when ETA shifts > 10 min) |
+| **Depends on** | Domain 3 writes GPS into `DeliverySessionDO`; Domain 1 supplies `tracking_token` on order creation |
+
+---
+
+### Domain 5 — Fare, Billing & Analytics
+
+**Owns:** All money movement — fare rules, order pricing, partner payouts, seller billing, and reporting dashboards.
+
+| | |
+|---|---|
+| **Interfaces** | Fare config screen (in Admin Dashboard), Seller billing section (in Seller Dashboard), Agent earnings tab (in Agent PWA), Analytics/reporting pages |
+| **CF Products** | Workers (fare + earnings routes), D1 (`fare_configs`, `order_fares`, `partner_earnings`), Queues (consumer — `order.delivered`, `order.failed` to settle fares + create earnings rows), KV (fare config cache per tenant, TTL 1h) |
+| **API Routes** | `GET /api/fares/config`, `PUT /api/fares/config`, `GET /api/orders/:id/fare`, `GET /api/agents/:id/earnings`, `GET /api/earnings/summary` |
+| **D1 Tables** | `fare_configs`, `order_fares`, `partner_earnings` |
+| **Consumes from Queue** | `order.delivered`, `order.failed` |
+| **Exposes** | `GET /internal/fares/quote` — called by Domain 1 (order form fare preview) and Domain 2 (ETA + cost in route plan) |
+
+---
+
+### Cross-Domain Contracts (Shared Interfaces)
+
+```
+Domain 1 ──[order.created]──────────────────────▶ Domain 2
+Domain 2 ──[agent.assigned, route.activated]────▶ Domain 4
+Domain 3 ──[stop.departed]──────────────────────▶ Domain 4  (triggers live tracking)
+Domain 3 ──[order.delivered, order.failed]──────▶ Domain 4 + Domain 5
+Domain 5 ──[GET /internal/fares/quote]──────────▶ Domain 1 + Domain 2
+
+Shared D1 tables (read-only cross-domain):
+  orders        → Domain 2 reads for assignment; Domain 4 reads for tracking
+  delivery_agents → Domain 2 reads GPS for dispatch; Domain 3 writes GPS
+  route_stops   → Domain 3 writes status; Domain 4 reads for customer timeline
+```
+
+---
+
+### Responsibility Matrix
+
+| Concern | D1 Seller | D2 Dispatch | D3 Agent | D4 Tracking | D5 Fare |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Seller onboarding & API keys | **own** | | | | |
+| Order creation (single + bulk) | **own** | | | | |
+| Fare quote on order form | call | | | | **own** |
+| Route optimization (AI) | | **own** | | | |
+| Agent assignment & dispatch | | **own** | | | |
+| Agent GPS streaming | | | **own** | consume | |
+| Stop lifecycle (depart/arrive/attempt) | | | **own** | consume | |
+| POD photo + OTP verification | | | **own** | | |
+| DeliverySessionDO (live fan-out) | | | write into | **own** | |
+| Customer tracking portal | | | | **own** | |
+| Email / push notifications | | | | **own** | |
+| Fare settlement & earnings | | | | | **own** |
+| Analytics & reporting | | | | | **own** |
+| Webhook outbound to seller | | | | | **own** |
+
+---
+
 ## 1. System Overview
 
 A multi-tenant SaaS platform for e-commerce companies to dispatch parcels from a hub to
