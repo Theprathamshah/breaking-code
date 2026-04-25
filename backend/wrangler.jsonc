@@ -88,6 +88,9 @@
   // CLERK_JWKS_URL   — e.g. https://<your-clerk-domain>/.well-known/jwks.json
   // CLERK_ISSUER     — e.g. https://<your-clerk-domain>
   // HMAC_SECRET      — random 32-byte hex string for tracking token signing
+  // GUPSHUP_API_KEY  — Gupshup API key for WhatsApp/SMS sends
+  // GUPSHUP_APP_NAME — Registered Gupshup app name for the source number
+  // GUPSHUP_SOURCE_NUMBER — Registered WhatsApp Business number in digits-only format
   "vars": {
     "ENVIRONMENT": "development"
   }

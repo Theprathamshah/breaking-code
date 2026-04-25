@@ -4,6 +4,9 @@
 
 PRAGMA foreign_keys = OFF;
 
+DELETE FROM order_feedback  WHERE order_id IN (SELECT id FROM orders WHERE tenant_id = 'dev_tenant');
+DELETE FROM partner_earnings WHERE orderE_id IN (SELECT id FROM orders WHERE tenant_id = 'dev_tenant');
+DELETE FROM order_fares      WHERE order_id IN (SELECT id FROM orders WHERE tenant_id = 'dev_tenant');
 DELETE FROM delivery_events WHERE order_id IN (SELECT id FROM orders WHERE tenant_id = 'dev_tenant');
 DELETE FROM route_stops WHERE route_id IN (SELECT id FROM routes WHERE tenant_id = 'dev_tenant');
 DELETE FROM routes         WHERE tenant_id = 'dev_tenant';
@@ -11,6 +14,7 @@ DELETE FROM orders         WHERE tenant_id = 'dev_tenant';
 DELETE FROM delivery_agents WHERE tenant_id = 'dev_tenant';
 DELETE FROM sellers        WHERE tenant_id = 'dev_tenant';
 DELETE FROM hubs           WHERE tenant_id = 'dev_tenant';
+DELETE FROM fare_configs   WHERE tenant_id = 'dev_tenant';
 
 PRAGMA foreign_keys = ON;
 
@@ -274,3 +278,50 @@ INSERT INTO delivery_events (id, order_id, agent_id, actor_type, event_type, met
    '{"settledFare":48.00}',                                     datetime('now', '-127 minutes')),
   ('evt_b04_13', 'ord_b04', NULL,           'system', 'order.status_changed',
    '{"from":"in_transit","to":"delivered","triggeredBy":"otp.verified"}', datetime('now', '-127 minutes'));
+
+-- ── Fare Config (D5) ──────────────────────────────────────────────────────────
+
+INSERT INTO fare_configs (id, tenant_id, base_fare, per_km_rate, weight_tier_1_max, weight_tier_1_surcharge, weight_tier_2_max, weight_tier_2_surcharge, weight_tier_3_surcharge, zone_premium_pct, narrow_window_premium, bulk_threshold, bulk_discount_pct) VALUES
+  ('fconf_dev', 'dev_tenant', 20, 5, 1, 0, 5, 10, 25, 0, 15, 50, 5);
+
+-- ── Order Fares (D5) ──────────────────────────────────────────────────────────
+-- Quoted fares for all orders + settled fares for delivered orders.
+
+INSERT INTO order_fares (id, order_id, quoted_fare, settled_fare, distance_km, breakdown, status, settled_at) VALUES
+  -- hub_mumbai — delivered
+  ('fare_m09', 'ord_m09', 72.00,  75.00,  9.0,  '{"base":20,"distance":45,"weightSurcharge":0,"zonePremium":0,"narrowWindowFee":0,"bulkDiscount":0}', 'settled', datetime('now', '-120 minutes')),
+  ('fare_m10', 'ord_m10', 101.00, 105.50, 14.5, '{"base":20,"distance":72.5,"weightSurcharge":10,"zonePremium":0,"narrowWindowFee":0,"bulkDiscount":0}', 'settled', datetime('now', '-115 minutes')),
+  -- hub_mumbai — failed (waived)
+  ('fare_m11', 'ord_m11', 87.00,  NULL,   NULL, '{"base":20,"distance":45,"weightSurcharge":10,"zonePremium":0,"narrowWindowFee":0,"bulkDiscount":0}',  'waived',  NULL),
+  -- hub_mumbai — in-flight (quoted only)
+  ('fare_m07', 'ord_m07', 57.50,  NULL,   NULL, '{"base":20,"distance":30,"weightSurcharge":0,"zonePremium":0,"narrowWindowFee":0,"bulkDiscount":0}',   'quoted',  NULL),
+  ('fare_m08', 'ord_m08', 71.50,  NULL,   NULL, '{"base":20,"distance":37.5,"weightSurcharge":10,"zonePremium":0,"narrowWindowFee":0,"bulkDiscount":0}', 'quoted',  NULL),
+  -- hub_mumbai — confirmed/packed (quoted)
+  ('fare_m01', 'ord_m01', 50.00,  NULL,   NULL, '{"base":20,"distance":24,"weightSurcharge":0,"zonePremium":0,"narrowWindowFee":0,"bulkDiscount":0}',   'quoted',  NULL),
+  ('fare_m02', 'ord_m02', 46.00,  NULL,   NULL, '{"base":20,"distance":26,"weightSurcharge":0,"zonePremium":0,"narrowWindowFee":0,"bulkDiscount":0}',   'quoted',  NULL),
+  ('fare_m03', 'ord_m03', 73.50,  NULL,   NULL, '{"base":20,"distance":30,"weightSurcharge":10,"zonePremium":0,"narrowWindowFee":0,"bulkDiscount":0}',  'quoted',  NULL),
+  ('fare_m04', 'ord_m04', 65.50,  NULL,   NULL, '{"base":20,"distance":28,"weightSurcharge":10,"zonePremium":0,"narrowWindowFee":0,"bulkDiscount":0}',  'quoted',  NULL),
+  ('fare_m05', 'ord_m05', 41.00,  NULL,   NULL, '{"base":20,"distance":21,"weightSurcharge":0,"zonePremium":0,"narrowWindowFee":0,"bulkDiscount":0}',   'quoted',  NULL),
+  ('fare_m06', 'ord_m06', 82.00,  NULL,   NULL, '{"base":20,"distance":37,"weightSurcharge":25,"zonePremium":0,"narrowWindowFee":0,"bulkDiscount":0}',  'quoted',  NULL),
+  -- hub_bandra
+  ('fare_b01', 'ord_b01', 39.00,  NULL,   NULL, '{"base":20,"distance":14,"weightSurcharge":0,"zonePremium":0,"narrowWindowFee":0,"bulkDiscount":0}',   'quoted',  NULL),
+  ('fare_b02', 'ord_b02', 53.50,  NULL,   NULL, '{"base":20,"distance":20,"weightSurcharge":10,"zonePremium":0,"narrowWindowFee":0,"bulkDiscount":0}',  'quoted',  NULL),
+  ('fare_b03', 'ord_b03', 47.00,  NULL,   NULL, '{"base":20,"distance":18,"weightSurcharge":0,"zonePremium":0,"narrowWindowFee":0,"bulkDiscount":0}',   'quoted',  NULL),
+  ('fare_b04', 'ord_b04', 45.00,  48.00,  5.6,  '{"base":20,"distance":17,"weightSurcharge":0,"zonePremium":0,"narrowWindowFee":0,"bulkDiscount":0}',   'settled', datetime('now', '-127 minutes'));
+
+-- ── Partner Earnings (D5) ──────────────────────────────────────────────────────
+-- Payout records for delivered orders (commission_pct = 80).
+
+INSERT INTO partner_earnings (id, agent_id, order_id, gross_fare, commission_pct, partner_payout, platform_cut, status) VALUES
+  ('earn_m09', 'agent_ravi',   'ord_m09', 75.00,  80, 60.00, 15.00, 'pending'),
+  ('earn_m10', 'agent_ravi',   'ord_m10', 105.50, 80, 84.40, 21.10, 'pending'),
+  ('earn_b04', 'agent_suresh', 'ord_b04', 48.00,  80, 38.40,  9.60, 'pending');
+
+-- ── Feedback (D5) ─────────────────────────────────────────────────────────────
+-- Sample feedback for delivered orders.
+
+INSERT INTO order_feedback (id, order_id, agent_id, from_actor, rating, comment, created_at) VALUES
+  ('fb_m09_c', 'ord_m09', 'agent_ravi',   'customer', 5, 'Super fast! Loved the service.',    datetime('now', '-110 minutes')),
+  ('fb_m09_s', 'ord_m09', 'agent_ravi',   'seller',   4, 'Delivered on time, good handling.', datetime('now', '-100 minutes')),
+  ('fb_m10_c', 'ord_m10', 'agent_ravi',   'customer', 4, 'Took a couple OTP tries but ok.',   datetime('now', '-105 minutes')),
+  ('fb_b04_c', 'ord_b04', 'agent_suresh', 'customer', 5, 'Very polite agent, quick delivery.',datetime('now', '-120 minutes'));

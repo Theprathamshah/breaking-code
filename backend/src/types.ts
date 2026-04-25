@@ -31,6 +31,9 @@ export interface Env {
   CLERK_JWKS_URL: string
   CLERK_ISSUER: string
   HMAC_SECRET: string
+  GUPSHUP_API_KEY: string
+  GUPSHUP_APP_NAME: string
+  GUPSHUP_SOURCE_NUMBER: string
   ENVIRONMENT: string
 }
 
@@ -207,6 +210,16 @@ export interface RouteStop {
 }
 
 export type StopStatus = 'pending' | 'heading_to' | 'arrived' | 'delivered' | 'failed'
+
+export interface OrderFeedback {
+  id: string
+  order_id: string
+  agent_id: string | null
+  from_actor: 'customer' | 'seller' | 'admin'
+  rating: number
+  comment: string | null
+  created_at: string
+}
 
 export interface DeliveryEvent {
   id: string

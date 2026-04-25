@@ -9,6 +9,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@api/gupshup": "file:.api/apis/gupshup",
     "hono": "^4.12.15"
   },
   "devDependencies": {

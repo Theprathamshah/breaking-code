@@ -8,12 +8,15 @@ import {
   Radio,
   IndianRupee,
   Navigation,
+  CheckCircle,
+  XCircle,
+  KeyRound,
 } from 'lucide-react'
 import { Shell } from '../../components/layout/Shell'
 import { Button } from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
 import { Spinner } from '../../components/ui/Spinner'
-import { agentsApi, routesApi, type RouteStop } from '../../lib/api'
+import { agentsApi, routesApi, d4Api, type RouteStop } from '../../lib/api'
 
 /**
  * Agent PWA — mobile-first, single column.
@@ -381,38 +384,87 @@ function StopCard({ stop, onOpen }: { stop: RouteStop; onOpen: () => void }) {
 }
 
 // ── Stop sheet (bottom sheet modal) ───────────────────────────────────────────
+// State machine: pending → heading_to → arrived → [otp_sent] → delivered | failed
+
+type SheetPhase = 'main' | 'otp' | 'fail'
 
 function StopSheet({
   stop,
   routeId,
   onClose,
-  onDeparted,
+  onDone,
 }: {
   stop: RouteStop
   routeId: string
   onClose: () => void
-  onDeparted: () => void
+  onDone: () => void
 }) {
   const { getToken } = useAuth()
+  const [phase, setPhase] = useState<SheetPhase>('main')
+  const [devOtp, setDevOtp] = useState<string | null>(null)
+  const [otpInput, setOtpInput] = useState('')
+  const [otpError, setOtpError] = useState<string | null>(null)
+  const [failReason, setFailReason] = useState('')
+  const [localStatus, setLocalStatus] = useState(stop.status)
 
   const departMutation = useMutation({
     mutationFn: async () => {
       const token = await getToken({ template: 'default' })
       return routesApi.departStop(token ?? '', routeId, stop.id)
     },
-    onSuccess: onDeparted,
+    onSuccess: () => setLocalStatus('heading_to'),
+  })
+
+  const arriveMutation = useMutation({
+    mutationFn: async () => {
+      const token = await getToken({ template: 'default' })
+      return d4Api.arrive(token ?? '', routeId, stop.id)
+    },
+    onSuccess: () => setLocalStatus('arrived'),
+  })
+
+  const otpRequestMutation = useMutation({
+    mutationFn: async () => {
+      const token = await getToken({ template: 'default' })
+      return d4Api.requestOtp(token ?? '', routeId, stop.id)
+    },
+    onSuccess: (data) => {
+      setDevOtp(data.__dev_otp ?? null)
+      setPhase('otp')
+    },
+  })
+
+  const otpVerifyMutation = useMutation({
+    mutationFn: async () => {
+      const token = await getToken({ template: 'default' })
+      return d4Api.verifyOtp(token ?? '', routeId, stop.id, otpInput)
+    },
+    onSuccess: (data) => {
+      if (data.success) {
+        setLocalStatus('delivered')
+        onDone()
+      } else {
+        setOtpError(data.message ?? 'OTP incorrect')
+      }
+    },
+  })
+
+  const failMutation = useMutation({
+    mutationFn: async () => {
+      const token = await getToken({ template: 'default' })
+      return d4Api.failStop(token ?? '', routeId, stop.id, failReason || 'No reason provided')
+    },
+    onSuccess: () => {
+      setLocalStatus('failed')
+      onDone()
+    },
   })
 
   return (
     <>
       <div
         onClick={onClose}
-        style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(12,12,15,0.7)',
-          zIndex: 40,
-        }}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(12,12,15,0.7)', zIndex: 40 }}
       />
       <div
         style={{
@@ -425,9 +477,8 @@ function StopSheet({
           background: 'var(--void)',
           borderTop: '1px solid var(--rim)',
           borderRadius: '20px 20px 0 0',
-          padding: '20px 20px 32px',
+          padding: '20px 20px 36px',
           zIndex: 50,
-          animation: 'fade-up var(--dur-base) var(--ease-spring) both',
         }}
       >
         {/* Handle */}
@@ -441,68 +492,217 @@ function StopSheet({
           }}
         />
 
-        <h3 style={{ fontSize: 17, fontWeight: 600, color: 'var(--chalk)', marginBottom: 4 }}>
+        {/* Customer info */}
+        <h3 style={{ fontSize: 17, fontWeight: 600, color: 'var(--chalk)', marginBottom: 3 }}>
           {stop.customer_name}
         </h3>
         {stop.customer_phone && (
-          <p style={{ fontSize: 13, color: 'var(--frost)', marginBottom: 12 }}>
-            {stop.customer_phone}
-          </p>
+          <p style={{ fontSize: 13, color: 'var(--frost)', marginBottom: 10 }}>{stop.customer_phone}</p>
         )}
-        <p style={{ fontSize: 14, color: 'var(--chalk)', marginBottom: 20 }}>{stop.address}</p>
+        <p style={{ fontSize: 13, color: 'var(--chalk)', marginBottom: 16 }}>{stop.address}</p>
 
+        {/* Parcel + window */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          <div
-            style={{
-              flex: 1,
-              background: 'var(--shell)',
-              borderRadius: 'var(--r-sm)',
-              padding: '10px 12px',
-            }}
-          >
+          <div style={{ flex: 1, background: 'var(--shell)', borderRadius: 8, padding: '10px 12px' }}>
             <p style={{ fontSize: 10, color: 'var(--frost)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Parcel</p>
-            <p style={{ fontSize: 14, color: 'var(--chalk)', marginTop: 2 }}>
+            <p style={{ fontSize: 13, color: 'var(--chalk)', marginTop: 2 }}>
               {stop.parcel_weight}kg · {stop.parcel_size}
             </p>
           </div>
           {stop.delivery_window_start && (
-            <div
-              style={{
-                flex: 1,
-                background: 'var(--shell)',
-                borderRadius: 'var(--r-sm)',
-                padding: '10px 12px',
-              }}
-            >
+            <div style={{ flex: 1, background: 'var(--shell)', borderRadius: 8, padding: '10px 12px' }}>
               <p style={{ fontSize: 10, color: 'var(--frost)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Window</p>
-              <p style={{ fontSize: 13, color: 'var(--chalk)', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
+              <p style={{ fontSize: 12, color: 'var(--chalk)', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
                 {fmtTime(stop.delivery_window_start)} – {fmtTime(stop.delivery_window_end ?? '')}
               </p>
             </div>
           )}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Button
-            variant="primary"
-            size="lg"
-            style={{ width: '100%', justifyContent: 'center' }}
-            loading={departMutation.isPending}
-            disabled={stop.status === 'heading_to'}
-            onClick={() => departMutation.mutate()}
-          >
-            <Navigation size={16} />
-            {stop.status === 'heading_to' ? 'En Route' : 'Heading to this Stop'}
-          </Button>
-          {departMutation.isError && (
-            <p style={{ fontSize: 12, color: 'var(--signal)', textAlign: 'center' }}>
-              {(departMutation.error as Error).message}
+        {/* ── Phase: main ────────────────────────────────────────────────────── */}
+        {phase === 'main' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* Heading to stop */}
+            {localStatus === 'pending' && (
+              <Button
+                variant="primary"
+                size="lg"
+                style={{ width: '100%', justifyContent: 'center' }}
+                loading={departMutation.isPending}
+                onClick={() => departMutation.mutate()}
+              >
+                <Navigation size={16} /> Head to this Stop
+              </Button>
+            )}
+
+            {localStatus === 'heading_to' && (
+              <Button
+                variant="primary"
+                size="lg"
+                style={{ width: '100%', justifyContent: 'center' }}
+                loading={arriveMutation.isPending}
+                onClick={() => arriveMutation.mutate()}
+              >
+                <MapPin size={16} /> Mark as Arrived
+              </Button>
+            )}
+
+            {localStatus === 'arrived' && (
+              <>
+                <Button
+                  variant="primary"
+                  size="lg"
+                  style={{ width: '100%', justifyContent: 'center' }}
+                  loading={otpRequestMutation.isPending}
+                  onClick={() => otpRequestMutation.mutate()}
+                >
+                  <KeyRound size={16} /> Send OTP to Customer
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="md"
+                  style={{ width: '100%', justifyContent: 'center', color: 'var(--signal)' }}
+                  onClick={() => setPhase('fail')}
+                >
+                  <XCircle size={14} /> Mark as Failed
+                </Button>
+              </>
+            )}
+
+            {(departMutation.isError || arriveMutation.isError || otpRequestMutation.isError) && (
+              <p style={{ fontSize: 12, color: 'var(--signal)', textAlign: 'center' }}>
+                {((departMutation.error ?? arriveMutation.error ?? otpRequestMutation.error) as Error)?.message}
+              </p>
+            )}
+
+            <Button variant="ghost" size="md" onClick={onClose} style={{ width: '100%', justifyContent: 'center' }}>
+              Close
+            </Button>
+          </div>
+        )}
+
+        {/* ── Phase: OTP entry ──────────────────────────────────────────────── */}
+        {phase === 'otp' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <p style={{ fontSize: 13, color: 'var(--frost)', textAlign: 'center' }}>
+              OTP sent to customer. Ask them for the 6-digit code.
             </p>
-          )}
-          <Button variant="ghost" size="md" onClick={onClose} style={{ width: '100%', justifyContent: 'center' }}>
-            Close
-          </Button>
-        </div>
+            {devOtp && (
+              <div
+                style={{
+                  background: 'rgba(255,184,0,0.1)',
+                  border: '1px solid rgba(255,184,0,0.3)',
+                  borderRadius: 8,
+                  padding: '8px 12px',
+                  textAlign: 'center',
+                }}
+              >
+                <p style={{ fontSize: 11, color: 'var(--amber)', fontFamily: 'var(--font-mono)' }}>
+                  DEV OTP: {devOtp}
+                </p>
+              </div>
+            )}
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="000000"
+              value={otpInput}
+              onChange={(e) => { setOtpInput(e.target.value.replace(/\D/g, '')); setOtpError(null) }}
+              style={{
+                background: 'var(--shell)',
+                border: `1px solid ${otpError ? 'var(--signal)' : 'var(--rim)'}`,
+                borderRadius: 8,
+                color: 'var(--chalk)',
+                fontSize: 28,
+                fontFamily: 'var(--font-mono)',
+                fontWeight: 700,
+                letterSpacing: '0.3em',
+                padding: '12px',
+                textAlign: 'center',
+                outline: 'none',
+                width: '100%',
+                boxSizing: 'border-box',
+              }}
+            />
+            {otpError && (
+              <p style={{ fontSize: 12, color: 'var(--signal)', textAlign: 'center' }}>{otpError}</p>
+            )}
+            <Button
+              variant="primary"
+              size="lg"
+              style={{ width: '100%', justifyContent: 'center' }}
+              loading={otpVerifyMutation.isPending}
+              disabled={otpInput.length !== 6}
+              onClick={() => otpVerifyMutation.mutate()}
+            >
+              <CheckCircle size={16} /> Verify & Deliver
+            </Button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button
+                variant="ghost"
+                size="md"
+                style={{ flex: 1, justifyContent: 'center' }}
+                onClick={() => setPhase('main')}
+              >
+                Back
+              </Button>
+              <Button
+                variant="ghost"
+                size="md"
+                style={{ flex: 1, justifyContent: 'center', color: 'var(--signal)' }}
+                onClick={() => setPhase('fail')}
+              >
+                <XCircle size={14} /> Mark Failed
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Phase: fail ───────────────────────────────────────────────────── */}
+        {phase === 'fail' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <p style={{ fontSize: 13, color: 'var(--frost)' }}>Why couldn't this be delivered?</p>
+            {['Customer not home', 'Customer refused', 'Wrong address', 'OTP timeout'].map((r) => (
+              <button
+                key={r}
+                onClick={() => setFailReason(r)}
+                style={{
+                  background: failReason === r ? 'rgba(255,77,77,0.1)' : 'var(--shell)',
+                  border: `1px solid ${failReason === r ? 'var(--signal)' : 'var(--rim)'}`,
+                  borderRadius: 8,
+                  color: failReason === r ? 'var(--signal)' : 'var(--chalk)',
+                  fontSize: 13,
+                  padding: '10px 14px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-body)',
+                  transition: 'all 0.1s',
+                }}
+              >
+                {r}
+              </button>
+            ))}
+            <Button
+              variant="danger"
+              size="lg"
+              style={{ width: '100%', justifyContent: 'center' }}
+              loading={failMutation.isPending}
+              disabled={!failReason}
+              onClick={() => failMutation.mutate()}
+            >
+              Confirm Failure
+            </Button>
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={() => setPhase('main')}
+              style={{ width: '100%', justifyContent: 'center' }}
+            >
+              Back
+            </Button>
+          </div>
+        )}
       </div>
     </>
   )

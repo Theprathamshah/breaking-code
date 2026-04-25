@@ -1,11 +1,15 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import type { Env, QueueMessage } from './types'
-import d2Routes from './domains/d2/routes'
+import type { Message } from '@cloudflare/workers-types'
+import type { Env, QueueMessage, OrderDeliveredMessage } from './types'
 import d1Routes from './domains/d1/routes'
+import d2Routes from './domains/d2/routes'
 import d3Routes from './domains/d3/routes'
+import d4Routes from './domains/d4/routes'
+import d5Routes from './domains/d5/routes'
 import { handleQueue } from './domains/d2/consumer'
 import { handleD3Queue } from './domains/d3/consumer'
+import { handleD5Queue } from './domains/d5/consumer'
 import { requireAuth } from './middleware/auth'
 
 // ── Re-export CF class bindings ───────────────────────────────────────────────
@@ -42,6 +46,12 @@ app.route('/', d1Routes)
 // ── Domain 3 — Delivery Events & Audit ───────────────────────────────────────
 app.route('/', d3Routes)
 
+// ── Domain 4 — Delivery Execution ────────────────────────────────────────────
+app.route('/', d4Routes)
+
+// ── Domain 5 — Fare & Feedback ────────────────────────────────────────────────
+app.route('/', d5Routes)
+
 // ── Debug (remove before deploy) ─────────────────────────────────────────────
 app.get('/api/me', requireAuth('admin', 'dispatcher', 'agent', 'customer', 'seller'), (c) => {
   return c.json(c.get('auth'))
@@ -75,18 +85,23 @@ export default {
     env: Env,
     _ctx: ExecutionContext,
   ): Promise<void> {
-    // Route by message type: order.created → D2 (triggers Workflow),
-    // everything else → D3 (writes delivery_events immutable log)
+    // Route by message type:
+    //   order.created   → D2 (triggers OrderLifecycleWorkflow)
+    //   order.delivered → D3 (audit log) + D5 (fare settlement)
+    //   everything else → D3 (audit log only)
     const d2Messages = batch.messages.filter((m) => m.body.type === 'order.created')
+    const d5Messages = batch.messages.filter((m) => m.body.type === 'order.delivered')
     const d3Messages = batch.messages.filter((m) => m.body.type !== 'order.created')
 
-    // Run both concurrently — they write to different tables
     await Promise.all([
       d2Messages.length > 0
         ? handleQueue({ ...batch, messages: d2Messages }, env)
         : Promise.resolve(),
       d3Messages.length > 0
         ? handleD3Queue(d3Messages, env)
+        : Promise.resolve(),
+      d5Messages.length > 0
+        ? handleD5Queue(d5Messages as Message<OrderDeliveredMessage>[], env)
         : Promise.resolve(),
     ])
   },

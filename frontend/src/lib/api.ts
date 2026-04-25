@@ -354,3 +354,129 @@ export interface TrackingInfo {
 export const trackingApi = {
   get: (token: string) => request<TrackingInfo>(`/track/${token}`),
 }
+
+// ── D4 — Delivery Execution ───────────────────────────────────────────────────
+
+export const d4Api = {
+  arrive: (token: string, routeId: string, stopId: string) =>
+    request<{ success: boolean; stopId: string; orderId: string }>(
+      `/api/routes/${routeId}/stops/${stopId}/arrive`,
+      { method: 'PATCH', body: JSON.stringify({}), token },
+    ),
+
+  requestOtp: (token: string, routeId: string, stopId: string) =>
+    request<{ success: boolean; otpSentTo: string; __dev_otp?: string }>(
+      `/api/routes/${routeId}/stops/${stopId}/otp/request`,
+      { method: 'POST', body: JSON.stringify({}), token },
+    ),
+
+  verifyOtp: (token: string, routeId: string, stopId: string, otp: string) =>
+    request<{ success: boolean; orderId?: string; status?: string; message?: string; attempt?: number }>(
+      `/api/routes/${routeId}/stops/${stopId}/otp/verify`,
+      { method: 'POST', body: JSON.stringify({ otp }), token },
+    ),
+
+  failStop: (token: string, routeId: string, stopId: string, reason: string) =>
+    request<{ success: boolean; orderId: string; status: string }>(
+      `/api/routes/${routeId}/stops/${stopId}/fail`,
+      { method: 'POST', body: JSON.stringify({ reason }), token },
+    ),
+}
+
+// ── D5 — Fare & Feedback ──────────────────────────────────────────────────────
+
+export interface FareConfig {
+  baseFare: number
+  perKmRate: number
+  weightTier1Max: number
+  weightTier1Surcharge: number
+  weightTier2Max: number
+  weightTier2Surcharge: number
+  weightTier3Surcharge: number
+  zonePremiumPct: number
+  narrowWindowPremium: number
+  bulkThreshold: number
+  bulkDiscountPct: number
+}
+
+export interface FareQuote {
+  orderId: string
+  quotedFare: number
+  settledFare: number | null
+  status: 'quoted' | 'settled' | 'waived'
+  breakdown: {
+    base: number
+    distance: number
+    weightSurcharge: number
+    zonePremium: number
+    narrowWindowFee: number
+    bulkDiscount: number
+    total: number
+  }
+}
+
+export interface Feedback {
+  id: string
+  from_actor: 'customer' | 'seller' | 'admin'
+  rating: number
+  comment: string | null
+  created_at: string
+}
+
+export interface AgentEarning {
+  id: string
+  order_id: string
+  gross_fare: number
+  commission_pct: number
+  partner_payout: number
+  platform_cut: number
+  status: 'pending' | 'approved' | 'paid'
+  created_at: string
+}
+
+export const d5Api = {
+  getFareConfig: (token: string) =>
+    request<FareConfig>('/api/fare/config', { token }),
+
+  updateFareConfig: (token: string, config: Partial<FareConfig>) =>
+    request<FareConfig>('/api/fare/config', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+      token,
+    }),
+
+  getFareQuote: (token: string, orderId: string) =>
+    request<FareQuote>(`/api/fare/quote?orderId=${encodeURIComponent(orderId)}`, { token }),
+
+  getFeedback: (token: string, orderId: string) =>
+    request<{ orderId: string; feedback: Feedback[] }>(`/api/orders/${orderId}/feedback`, { token }),
+
+  submitFeedback: (
+    token: string,
+    orderId: string,
+    payload: { fromActor: 'customer' | 'seller' | 'admin'; rating: number; comment?: string },
+  ) =>
+    request<{ feedbackId: string }>(`/api/orders/${orderId}/feedback`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      token,
+    }),
+
+  getEarnings: (token: string, agentId: string, params?: { month?: string; status?: string }) => {
+    const q = new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(params ?? {})
+          .filter(([, v]) => v !== undefined)
+          .map(([k, v]) => [k, String(v)]),
+      ),
+    ).toString()
+    return request<{
+      agentId: string
+      period: string
+      totalDeliveries: number
+      totalEarnings: number
+      pendingPayout: number
+      earnings: AgentEarning[]
+    }>(`/api/agents/${agentId}/earnings${q ? `?${q}` : ''}`, { token })
+  },
+}
