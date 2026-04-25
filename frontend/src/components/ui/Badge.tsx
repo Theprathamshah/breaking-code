@@ -39,7 +39,7 @@ const VARIANT_CONFIG: Record<
 }
 
 const LABEL_MAP: Partial<Record<BadgeVariant, string>> = {
-  out_for_delivery: 'Out for Delivery',
+  out_for_delivery: 'Out for Del.',
   in_transit:       'In Transit',
   on_route:         'On Route',
 }
