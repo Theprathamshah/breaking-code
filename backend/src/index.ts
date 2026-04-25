@@ -3,7 +3,9 @@ import { cors } from 'hono/cors'
 import type { Env, QueueMessage } from './types'
 import d2Routes from './domains/d2/routes'
 import d1Routes from './domains/d1/routes'
+import d3Routes from './domains/d3/routes'
 import { handleQueue } from './domains/d2/consumer'
+import { handleD3Queue } from './domains/d3/consumer'
 import { requireAuth } from './middleware/auth'
 
 // ── Re-export CF class bindings ───────────────────────────────────────────────
@@ -21,7 +23,7 @@ app.use(
   cors({
     origin: '*',
     allowMethods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Authorization', 'Content-Type', 'X-Api-Key'],
+    allowHeaders: ['Authorization', 'Content-Type', 'X-Api-Key', 'X-Internal-Token'],
   }),
 )
 
@@ -36,6 +38,9 @@ app.get('/', (c) =>
 // ── Domain 2 — Dispatch & Route Ops ──────────────────────────────────────────
 app.route('/', d2Routes)
 app.route('/', d1Routes)
+
+// ── Domain 3 — Delivery Events & Audit ───────────────────────────────────────
+app.route('/', d3Routes)
 
 // ── Debug (remove before deploy) ─────────────────────────────────────────────
 app.get('/api/me', requireAuth('admin', 'dispatcher', 'agent', 'customer', 'seller'), (c) => {
@@ -62,14 +67,27 @@ export default {
   },
 
   /**
-   * Queue consumer — processes `order.created` messages from Domain 1.
-   * Triggers OrderLifecycleWorkflow for each order.
+   * Queue consumer — D2 handles `order.created` (triggers Workflow).
+   * D3 handles all other event types (writes to delivery_events).
    */
   async queue(
     batch: MessageBatch<QueueMessage>,
     env: Env,
     _ctx: ExecutionContext,
   ): Promise<void> {
-    return handleQueue(batch, env)
+    // Route by message type: order.created → D2 (triggers Workflow),
+    // everything else → D3 (writes delivery_events immutable log)
+    const d2Messages = batch.messages.filter((m) => m.body.type === 'order.created')
+    const d3Messages = batch.messages.filter((m) => m.body.type !== 'order.created')
+
+    // Run both concurrently — they write to different tables
+    await Promise.all([
+      d2Messages.length > 0
+        ? handleQueue({ ...batch, messages: d2Messages }, env)
+        : Promise.resolve(),
+      d3Messages.length > 0
+        ? handleD3Queue(d3Messages, env)
+        : Promise.resolve(),
+    ])
   },
 }

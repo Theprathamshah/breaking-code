@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@clerk/clerk-react'
-import { X, MapPin, Clock, Truck, Play } from 'lucide-react'
+import { X, MapPin, Clock, Truck, Play, FileText } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Spinner } from '../../components/ui/Spinner'
 import { routesApi, type Route, type RouteStop, type Agent, type OptimizeResult } from '../../lib/api'
+import { OrderAuditTrail } from './OrderAuditTrail'
 
 interface Props {
   routeOrResult: Route | OptimizeResult
@@ -22,6 +23,7 @@ function isOptimizeResult(r: Route | OptimizeResult): r is OptimizeResult {
 export function RouteDetail({ routeOrResult, agents, onClose, onActivate, activating }: Props) {
   const { getToken } = useAuth()
   const [selectedAgentId, setSelectedAgentId] = useState('')
+  const [auditOrder, setAuditOrder] = useState<{ orderId: string; customerName: string } | null>(null)
 
   const routeId = isOptimizeResult(routeOrResult) ? routeOrResult.routeId : routeOrResult.id
   const status = isOptimizeResult(routeOrResult) ? routeOrResult.status : routeOrResult.status
@@ -275,12 +277,47 @@ export function RouteDetail({ routeOrResult, agents, onClose, onActivate, activa
                       )}
                     </div>
                   </div>
+
+                  {/* Audit trail button (active routes only) */}
+                  {isRS && (
+                    <button
+                      title="View audit trail"
+                      onClick={() =>
+                        setAuditOrder({
+                          orderId: (stop as RouteStop).order_id,
+                          customerName: customerName ?? '',
+                        })
+                      }
+                      style={{
+                        background: 'none',
+                        border: '1px solid var(--rim)',
+                        borderRadius: 6,
+                        padding: '4px 6px',
+                        cursor: 'pointer',
+                        color: 'var(--muted)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <FileText size={13} />
+                    </button>
+                  )}
                 </div>
               )
             })}
           </div>
         )}
       </div>
+
+      {/* Order audit trail side panel */}
+      {auditOrder && (
+        <OrderAuditTrail
+          orderId={auditOrder.orderId}
+          customerName={auditOrder.customerName}
+          onClose={() => setAuditOrder(null)}
+        />
+      )}
     </div>
   )
 }

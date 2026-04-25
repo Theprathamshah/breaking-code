@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useAuth } from '@clerk/clerk-react'
 import { X, Zap } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
-import { routesApi, type Agent, type OptimizeResult } from '../../lib/api'
+import { routesApi, hubsApi, type Agent, type OptimizeResult } from '../../lib/api'
 
 interface Props {
   agents: Agent[]
@@ -18,6 +18,15 @@ export function RouteOptimizeModal({ agents, onClose, onSuccess }: Props) {
   const [hubId, setHubId] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [agentId, setAgentId] = useState('')
+
+  const { data: hubsData } = useQuery({
+    queryKey: ['hubs'],
+    queryFn: async () => {
+      const token = await getToken({ template: 'default' })
+      return hubsApi.list(token ?? '')
+    },
+  })
+  const hubs = hubsData?.hubs ?? []
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -104,12 +113,43 @@ export function RouteOptimizeModal({ agents, onClose, onSuccess }: Props) {
 
         {/* Form */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <Input
-            label="Hub ID"
-            placeholder="hub_XXXXXXXXXXXX"
-            value={hubId}
-            onChange={(e) => setHubId(e.target.value)}
-          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label
+              style={{
+                fontSize: 10,
+                fontWeight: 500,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'var(--frost)',
+              }}
+            >
+              Hub
+            </label>
+            <select
+              value={hubId}
+              onChange={(e) => setHubId(e.target.value)}
+              style={{
+                height: 40,
+                background: 'var(--void)',
+                border: '1px solid var(--rim)',
+                borderRadius: 'var(--r-sm)',
+                color: hubId ? 'var(--chalk)' : 'var(--muted)',
+                fontSize: 14,
+                padding: '0 12px',
+                outline: 'none',
+                cursor: 'pointer',
+                width: '100%',
+                fontFamily: 'var(--font-body)',
+              }}
+            >
+              <option value="">— Select hub —</option>
+              {hubs.map((h) => (
+                <option key={h.id} value={h.id}>
+                  {h.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <Input
             label="Delivery Date"
