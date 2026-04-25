@@ -50,6 +50,7 @@ interface BadgeProps {
 
 export function Badge({ status }: BadgeProps) {
   const variant = status as BadgeVariant
+  const label = LABEL_MAP[variant] ?? status.replace(/_/g, ' ')
   const config = VARIANT_CONFIG[variant] ?? {
     bg: 'rgba(42,42,54,0.80)',
     dot: '#6b6b80',
@@ -59,16 +60,22 @@ export function Badge({ status }: BadgeProps) {
   const containerStyle: CSSProperties = {
     display: 'inline-flex',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 5,
     padding: '2px 8px',
+    minWidth: 96,
+    maxWidth: '100%',
     borderRadius: 9999,
     background: config.bg,
     fontSize: 10,
     fontWeight: 500,
+    lineHeight: 1.2,
     letterSpacing: '0.08em',
     textTransform: 'uppercase',
     color: config.text,
     whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
     fontFamily: 'var(--font-body)',
   }
 
@@ -82,9 +89,9 @@ export function Badge({ status }: BadgeProps) {
   }
 
   return (
-    <span style={containerStyle}>
+    <span style={containerStyle} title={label}>
       <span style={dotStyle} />
-      {LABEL_MAP[variant] ?? status.replace(/_/g, ' ')}
+      {label}
     </span>
   )
 }

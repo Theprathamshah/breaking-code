@@ -66,6 +66,11 @@ button { cursor: pointer; font-family: inherit; }
 input, select, textarea { font-family: inherit; }
 
 /* ── Scrollbar ───────────────────────────────────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rim) transparent;
+}
+
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--rim); border-radius: var(--r-full); }

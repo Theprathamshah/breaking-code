@@ -148,6 +148,69 @@ export function TrackingPage() {
         </div>
       </div>
 
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: 12,
+          marginBottom: 24,
+        }}
+      >
+        <div
+          style={{
+            background: 'var(--void)',
+            border: `1px solid ${mode === 'live' ? 'rgba(87,200,255,0.28)' : 'var(--rim)'}`,
+            borderRadius: 'var(--r-md)',
+            padding: '14px 16px',
+          }}
+        >
+          <p
+            style={{
+              fontSize: 10,
+              color: 'var(--frost)',
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              marginBottom: 6,
+            }}
+          >
+            Tracking Mode
+          </p>
+          <p style={{ fontSize: 16, color: mode === 'live' ? 'var(--ice)' : 'var(--chalk)', fontWeight: 600 }}>
+            {mode === 'live' ? 'Live' : 'Milestone'}
+          </p>
+          <p style={{ fontSize: 12, color: 'var(--frost)', marginTop: 4 }}>
+            {mode === 'live' ? 'Your driver is actively approaching this stop.' : 'Status updates refresh automatically.'}
+          </p>
+        </div>
+
+        <div
+          style={{
+            background: 'var(--void)',
+            border: '1px solid var(--rim)',
+            borderRadius: 'var(--r-md)',
+            padding: '14px 16px',
+          }}
+        >
+          <p
+            style={{
+              fontSize: 10,
+              color: 'var(--frost)',
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              marginBottom: 6,
+            }}
+          >
+            Current State
+          </p>
+          <p style={{ fontSize: 16, color: 'var(--chalk)', fontWeight: 600 }}>
+            {STATUS_LABELS[order.status] ?? order.status}
+          </p>
+          <p style={{ fontSize: 12, color: 'var(--frost)', marginTop: 4 }}>
+            {eta ? `Latest ETA ${fmtTime(eta)}` : 'Waiting for the next movement update.'}
+          </p>
+        </div>
+      </div>
+
       {/* Live mode banner */}
       {mode === 'live' && (
         <div
@@ -176,6 +239,17 @@ export function TrackingPage() {
               }}
             >
               ETA {fmtTime(eta)}
+            </p>
+          )}
+          {!eta && (
+            <p
+              style={{
+                fontSize: 12,
+                color: 'var(--frost)',
+                marginLeft: 26,
+              }}
+            >
+              ETA is syncing. Keep this page open for the latest update.
             </p>
           )}
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@clerk/clerk-react'
-import { Package, PackageCheck, PackageX, Truck, Plus, Upload, X } from 'lucide-react'
+import { Package, PackageCheck, PackageX, Truck, Plus, Upload, X, Radio, ExternalLink, Copy, Check } from 'lucide-react'
 import { Shell } from '../../components/layout/Shell'
 import { StatCard } from '../../components/ui/StatCard'
 import { Badge } from '../../components/ui/Badge'
@@ -124,20 +124,72 @@ export function SellerDashboard() {
         ))}
       </div>
 
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 16,
+          flexWrap: 'wrap',
+          background: 'rgba(87,200,255,0.08)',
+          border: '1px solid rgba(87,200,255,0.26)',
+          borderRadius: 'var(--r-md)',
+          padding: '14px 16px',
+          marginBottom: 18,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: '50%',
+              background: 'rgba(87,200,255,0.12)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Radio size={15} color="var(--ice)" />
+          </div>
+          <div>
+            <p
+              style={{
+                fontSize: 10,
+                color: 'var(--ice)',
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                fontWeight: 600,
+              }}
+            >
+              Tracking Live
+            </p>
+            <p style={{ fontSize: 13, color: 'var(--chalk)' }}>
+              Open customer tracking links directly from any order row.
+            </p>
+          </div>
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--frost)' }}>
+          {inTransit} order{inTransit === 1 ? '' : 's'} currently moving through the network
+        </p>
+      </div>
+
       {/* Orders table */}
       <div
         style={{
           background: 'var(--void)',
           border: '1px solid var(--rim)',
           borderRadius: 'var(--r-md)',
-          overflow: 'hidden',
+          overflowX: 'auto',
+          overflowY: 'hidden',
         }}
       >
         {/* Table header */}
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '1.5fr 2fr 1fr 1fr 1fr 1fr',
+            gridTemplateColumns: '1.25fr 2fr 1fr 1fr 1fr 1fr 1.25fr',
+            minWidth: 980,
             padding: '0 16px',
             height: 36,
             alignItems: 'center',
@@ -145,7 +197,7 @@ export function SellerDashboard() {
             background: 'var(--obsidian)',
           }}
         >
-          {['Order ID', 'Customer', 'Status', 'Parcel', 'Window', 'Date'].map((h) => (
+          {['Order ID', 'Customer', 'Status', 'Parcel', 'Window', 'Date', 'Tracking'].map((h) => (
             <span
               key={h}
               style={{
@@ -445,15 +497,28 @@ function CreateOrderModal({
 }
 
 function OrderRow({ order }: { order: Order }) {
+  const [copied, setCopied] = useState(false)
   const window = order.delivery_window_start
     ? `${fmt(order.delivery_window_start)} – ${fmt(order.delivery_window_end ?? '')}`
     : '—'
+  const trackingUrl =
+    typeof globalThis.location !== 'undefined' && order.tracking_token
+      ? `${globalThis.location.origin}/track/${order.tracking_token}`
+      : null
+
+  async function copyTrackingLink() {
+    if (!trackingUrl || !navigator.clipboard?.writeText) return
+    await navigator.clipboard.writeText(trackingUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1600)
+  }
 
   return (
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: '1.5fr 2fr 1fr 1fr 1fr 1fr',
+        gridTemplateColumns: '1.25fr 2fr 1fr 1fr 1fr 1fr 1.25fr',
+        minWidth: 980,
         padding: '0 16px',
         height: 52,
         alignItems: 'center',
@@ -504,6 +569,67 @@ function OrderRow({ order }: { order: Order }) {
       <span style={{ fontSize: 11, color: 'var(--frost)', fontFamily: 'var(--font-mono)' }}>
         {fmt(order.created_at)}
       </span>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {trackingUrl ? (
+          <>
+            <a
+              href={trackingUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 10px',
+                borderRadius: 'var(--r-sm)',
+                border: '1px solid rgba(87,200,255,0.28)',
+                color: 'var(--ice)',
+                textDecoration: 'none',
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+              }}
+            >
+              <ExternalLink size={12} />
+              Track
+            </a>
+            <button
+              type="button"
+              onClick={copyTrackingLink}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: '50%',
+                border: '1px solid var(--rim)',
+                background: copied ? 'rgba(200,255,87,0.12)' : 'transparent',
+                color: copied ? 'var(--volt)' : 'var(--frost)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'all var(--dur-fast) var(--ease-out)',
+              }}
+              aria-label="Copy tracking link"
+              title={copied ? 'Copied' : 'Copy tracking link'}
+            >
+              {copied ? <Check size={13} /> : <Copy size={13} />}
+            </button>
+          </>
+        ) : (
+          <span
+            style={{
+              fontSize: 10,
+              color: 'var(--muted)',
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+            }}
+          >
+            Pending
+          </span>
+        )}
+      </div>
     </div>
   )
 }

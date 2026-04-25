@@ -68,6 +68,146 @@ function getTenantScope(auth: AuthContext, seller?: SellerRow | null): string {
   return auth.orgId
 }
 
+function safeParseMetadata(raw: string): Record<string, unknown> {
+  try {
+    return JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    return {}
+  }
+}
+
+interface TrackingEventRow {
+  event_type: string
+  metadata: string
+  created_at: string
+}
+
+function buildStatusTimeline(
+  events: TrackingEventRow[],
+): Array<{ status: string; ts: string }> {
+  const seen = new Set<string>()
+  const timeline: Array<{ status: string; ts: string }> = []
+
+  for (const event of events) {
+    let status: string | null = null
+
+    if (event.event_type === 'order.created') {
+      status = 'placed'
+    } else if (event.event_type === 'order.status_changed') {
+      const metadata = safeParseMetadata(event.metadata)
+      status = typeof metadata.to === 'string' ? metadata.to : null
+    } else if (event.event_type === 'order.delivered') {
+      status = 'delivered'
+    } else if (event.event_type === 'order.failed') {
+      status = 'failed'
+    } else if (event.event_type === 'order.rescheduled') {
+      status = 'rescheduled'
+    }
+
+    if (!status || seen.has(status)) continue
+
+    timeline.push({ status, ts: event.created_at })
+    seen.add(status)
+  }
+
+  return timeline
+}
+
+d1.get('/track/:token', async (c) => {
+  const token = c.req.param('token').trim()
+  if (!token) return c.json({ error: 'Tracking token is required' }, 400)
+
+  const cachedOrderId = await c.env.KV.get(`tracking_token:${token}`)
+
+  const orderById = cachedOrderId
+    ? await c.env.DB.prepare('SELECT * FROM orders WHERE id = ? LIMIT 1')
+        .bind(cachedOrderId)
+        .first<OrderRow>()
+    : null
+
+  const order =
+    orderById ??
+    (await c.env.DB.prepare('SELECT * FROM orders WHERE tracking_token = ? LIMIT 1')
+      .bind(token)
+      .first<OrderRow>())
+
+  if (!order || order.tracking_token !== token) {
+    return c.json({ error: 'Tracking link not found' }, 404)
+  }
+
+  const trackingMode = await c.env.KV.get(`tracking_mode:${order.id}`)
+  const mode =
+    trackingMode === 'live' || order.status === 'in_transit' ? 'live' : 'milestone'
+
+  const { results: events } = await c.env.DB.prepare(
+    `SELECT event_type, metadata, created_at
+     FROM delivery_events
+     WHERE order_id = ?
+       AND event_type IN (
+         'order.created',
+         'order.status_changed',
+         'order.delivered',
+         'order.failed',
+         'order.rescheduled'
+       )
+     ORDER BY created_at ASC`,
+  )
+    .bind(order.id)
+    .all<TrackingEventRow>()
+
+  const statusTimeline = buildStatusTimeline(events)
+
+  const stop = await c.env.DB.prepare(
+    `SELECT
+       rs.id AS stop_id,
+       rs.eta AS stop_eta,
+       r.agent_id AS agent_id,
+       r.status AS route_status,
+       a.name AS agent_name,
+       a.photo_url AS agent_photo
+     FROM route_stops rs
+     JOIN routes r ON r.id = rs.route_id
+     LEFT JOIN delivery_agents a ON a.id = r.agent_id
+     WHERE rs.order_id = ?
+     ORDER BY
+       CASE WHEN r.status = 'active' THEN 0 ELSE 1 END,
+       r.date DESC,
+       rs.sequence_no DESC
+     LIMIT 1`,
+  )
+    .bind(order.id)
+    .first<{
+      stop_id: string
+      stop_eta: string | null
+      agent_id: string | null
+      route_status: string
+      agent_name: string | null
+      agent_photo: string | null
+    }>()
+
+  let eta = stop?.stop_eta ?? null
+  if (stop?.stop_id) {
+    const cachedEta = await c.env.KV.get<{ eta?: string }>(`eta:stop:${stop.stop_id}`, 'json')
+    if (cachedEta?.eta) eta = cachedEta.eta
+  }
+
+  return c.json({
+    mode,
+    order: {
+      id: order.id,
+      status: order.status,
+      customerName: order.customer_name,
+      address: order.address,
+      trackingToken: order.tracking_token,
+    },
+    statusTimeline,
+    agentId: stop?.agent_id ?? undefined,
+    agentName: stop?.agent_name ?? undefined,
+    agentPhoto: stop?.agent_photo ?? undefined,
+    eta,
+  })
+})
+
 d1.get('/api/orders', requireAuth('seller', 'admin', 'dispatcher', 'agent'), async (c) => {
   const auth = c.get('auth') as AuthContext
   const { status, hubId, limit = '50' } = c.req.query()
