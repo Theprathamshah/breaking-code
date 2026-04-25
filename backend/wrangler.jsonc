@@ -1,38 +1,94 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "backend",
+  "name": "breaking-code-backend",
   "main": "src/index.ts",
-  "compatibility_date": "2026-04-25"
-  // "compatibility_flags": [
-  //   "nodejs_compat"
-  // ],
-  // "vars": {
-  //   "MY_VAR": "my-variable"
-  // },
-  // "kv_namespaces": [
-  //   {
-  //     "binding": "MY_KV_NAMESPACE",
-  //     "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-  //   }
-  // ],
-  // "r2_buckets": [
-  //   {
-  //     "binding": "MY_BUCKET",
-  //     "bucket_name": "my-bucket"
-  //   }
-  // ],
-  // "d1_databases": [
-  //   {
-  //     "binding": "MY_DB",
-  //     "database_name": "my-database",
-  //     "database_id": ""
-  //   }
-  // ],
-  // "ai": {
-  //   "binding": "AI"
-  // },
-  // "observability": {
-  //   "enabled": true,
-  //   "head_sampling_rate": 1
-  // }
+  "compatibility_date": "2026-04-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+
+  // ── D1 ─────────────────────────────────────────────────────────────────────
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lastmile-db",
+      "database_id": "64d5a8df-7265-481b-b288-cab709360e07"
+    }
+  ],
+
+  // ── KV ─────────────────────────────────────────────────────────────────────
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "be648200ef7d468f9bd60369b2f5cecc"
+    }
+  ],
+
+  // ── R2 ─────────────────────────────────────────────────────────────────────
+  "r2_buckets": [
+    {
+      "binding": "STORAGE",
+      "bucket_name": "lastmile-pods"
+    }
+  ],
+
+  // ── Queues ─────────────────────────────────────────────────────────────────
+  "queues": {
+    "producers": [
+      { "queue": "order-created",   "binding": "QUEUE_ORDER_CREATED"   },
+      { "queue": "agent-assigned",  "binding": "QUEUE_AGENT_ASSIGNED"  },
+      { "queue": "route-activated", "binding": "QUEUE_ROUTE_ACTIVATED" },
+      { "queue": "stop-departed",   "binding": "QUEUE_STOP_DEPARTED"   },
+      { "queue": "order-delivered", "binding": "QUEUE_ORDER_DELIVERED" },
+      { "queue": "order-failed",    "binding": "QUEUE_ORDER_FAILED"    }
+    ],
+    "consumers": [
+      {
+        "queue": "order-created",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "dead_letter_queue": "order-created-dlq"
+      }
+    ]
+  },
+
+  // ── Workers AI ─────────────────────────────────────────────────────────────
+  "ai": {
+    "binding": "AI"
+  },
+
+  // ── Cloudflare Workflows ────────────────────────────────────────────────────
+  "workflows": [
+    {
+      "name": "OrderLifecycleWorkflow",
+      "binding": "ORDER_LIFECYCLE_WORKFLOW",
+      "class_name": "OrderLifecycleWorkflow"
+    }
+  ],
+
+  // ── Durable Objects ─────────────────────────────────────────────────────────
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "DELIVERY_SESSION_DO",
+        "class_name": "DeliverySessionDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_classes": ["DeliverySessionDO"]
+    }
+  ],
+
+  // ── Secrets (set via: wrangler secret put SECRET_NAME) ─────────────────────
+  // CLERK_JWKS_URL   — e.g. https://<your-clerk-domain>/.well-known/jwks.json
+  // CLERK_ISSUER     — e.g. https://<your-clerk-domain>
+  // HMAC_SECRET      — random 32-byte hex string for tracking token signing
+  "vars": {
+    "ENVIRONMENT": "development"
+  }
 }
