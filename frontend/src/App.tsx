@@ -1,10 +1,12 @@
+import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react'
+import { SignedIn, SignedOut, RedirectToSignIn, useAuth, useUser } from '@clerk/clerk-react'
 import { Login } from './pages/Login'
 import { DispatchDashboard } from './pages/dispatch/DispatchDashboard'
 import { SellerDashboard } from './pages/seller/SellerDashboard'
 import { AgentHome } from './pages/agent/AgentHome'
 import { TrackingPage } from './pages/customer/TrackingPage'
+import { API_BASE } from './env'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return (
@@ -15,6 +17,53 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
       </SignedOut>
     </>
   )
+}
+
+function HomeRedirect() {
+  const { user, isLoaded } = useUser()
+  const { getToken } = useAuth()
+  const [fallbackRole, setFallbackRole] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!isLoaded) return
+
+    const metadataRole = String(user?.publicMetadata?.role ?? '')
+    if (metadataRole) {
+      setFallbackRole(metadataRole)
+      return
+    }
+
+    let cancelled = false
+
+    ;(async () => {
+      const token = await getToken({ template: 'default' })
+      if (!token) return
+
+      const res = await fetch(`${API_BASE}/api/sellers/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      if (!cancelled && res.ok) {
+        setFallbackRole('seller')
+      } else if (!cancelled) {
+        setFallbackRole('dispatcher')
+      }
+    })().catch(() => {
+      if (!cancelled) setFallbackRole('dispatcher')
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [getToken, isLoaded, user?.publicMetadata?.role])
+
+  if (!isLoaded || !fallbackRole) return null
+
+  const role = fallbackRole
+
+  if (role === 'seller') return <Navigate to="/seller" replace />
+  if (role === 'agent') return <Navigate to="/agent" replace />
+  return <Navigate to="/dispatch" replace />
 }
 
 export default function App() {
@@ -51,8 +100,8 @@ export default function App() {
       />
 
       {/* Default redirect */}
-      <Route path="/" element={<Navigate to="/dispatch" replace />} />
-      <Route path="*" element={<Navigate to="/dispatch" replace />} />
+      <Route path="/" element={<HomeRedirect />} />
+      <Route path="*" element={<HomeRedirect />} />
     </Routes>
   )
 }

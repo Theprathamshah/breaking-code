@@ -8,7 +8,6 @@ import {
   Users,
   IndianRupee,
   LogOut,
-  ChevronDown,
 } from 'lucide-react'
 
 interface NavItem {

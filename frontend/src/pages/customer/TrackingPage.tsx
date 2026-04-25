@@ -1,6 +1,6 @@
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Truck, Radio, PackageCheck, PackageX, Clock, MapPin } from 'lucide-react'
+import { Truck, Radio, PackageCheck, PackageX, MapPin } from 'lucide-react'
 import { Timeline } from '../../components/ui/Timeline'
 import { Spinner } from '../../components/ui/Spinner'
 import { Badge } from '../../components/ui/Badge'
@@ -67,7 +67,7 @@ export function TrackingPage() {
   const { order, mode, statusTimeline, agentName, eta } = data
   const currentIdx = STATUS_ORDER.indexOf(order.status)
 
-  const timelineSteps = STATUS_ORDER.filter((s) => s !== 'in_transit' || mode === 'live').map((s, i) => {
+  const timelineSteps = STATUS_ORDER.filter((s) => s !== 'in_transit' || mode === 'live').map((s) => {
     const tsEntry = statusTimeline?.find((e) => e.status === s)
     return {
       status: s,

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import type { Env, QueueMessage } from './types'
 import d2Routes from './domains/d2/routes'
+import d1Routes from './domains/d1/routes'
 import { handleQueue } from './domains/d2/consumer'
 import { requireAuth } from './middleware/auth'
 
@@ -34,26 +35,11 @@ app.get('/', (c) =>
 
 // ── Domain 2 — Dispatch & Route Ops ──────────────────────────────────────────
 app.route('/', d2Routes)
+app.route('/', d1Routes)
 
 // ── Debug (remove before deploy) ─────────────────────────────────────────────
-app.get('/api/me', requireAuth('admin', 'dispatcher', 'agent', 'customer'), (c) => {
+app.get('/api/me', requireAuth('admin', 'dispatcher', 'agent', 'customer', 'seller'), (c) => {
   return c.json(c.get('auth'))
-})
-
-// ── Domain 1 stub — Orders (read-only until D1 is implemented) ────────────────
-app.get('/api/orders', requireAuth('admin', 'dispatcher', 'agent'), async (c) => {
-  const auth = c.get('auth') as import('./types').AuthContext
-  const { status, hubId, limit = '50' } = c.req.query()
-
-  const parts = ['SELECT * FROM orders WHERE tenant_id = ?']
-  const params: unknown[] = [auth.orgId]
-
-  if (status)  { parts.push('AND status = ?');  params.push(status) }
-  if (hubId)   { parts.push('AND hub_id = ?');  params.push(hubId) }
-  parts.push(`ORDER BY created_at DESC LIMIT ${parseInt(limit) || 50}`)
-
-  const { results } = await c.env.DB.prepare(parts.join(' ')).bind(...params).all()
-  return c.json({ orders: results })
 })
 
 // ── 404 fallback ──────────────────────────────────────────────────────────────

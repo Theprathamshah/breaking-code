@@ -1,12 +1,12 @@
 import { API_BASE } from '../env'
 
 class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
+  status: number
+
+  constructor(status: number, message: string) {
     super(message)
     this.name = 'ApiError'
+    this.status = status
   }
 }
 
@@ -24,11 +24,11 @@ async function request<T>(
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers })
 
   if (!res.ok) {
-    const body = await res.json<{ error?: string }>().catch(() => ({}))
+    const body = (await res.json().catch(() => ({}))) as { error?: string }
     throw new ApiError(res.status, body.error ?? `HTTP ${res.status}`)
   }
 
-  return res.json<T>()
+  return (await res.json()) as T
 }
 
 // ── Agents ────────────────────────────────────────────────────────────────────
@@ -168,6 +168,19 @@ export interface Order {
   seller_id: string
 }
 
+export interface CreateOrderPayload {
+  customerName: string
+  customerEmail?: string
+  customerPhone?: string
+  address: string
+  hubId: string
+  parcelWeight: number
+  parcelSize: 'small' | 'medium' | 'large'
+  deliveryWindowStart?: string
+  deliveryWindowEnd?: string
+  notes?: string
+}
+
 export const ordersApi = {
   list: (token: string, params?: { status?: string; hubId?: string; limit?: number }) => {
     const q = new URLSearchParams(
@@ -179,8 +192,8 @@ export const ordersApi = {
     ).toString()
     return request<{ orders: Order[] }>(`/api/orders${q ? `?${q}` : ''}`, { token })
   },
-  create: (token: string, order: Partial<Order>) =>
-    request<{ id: string; quotedFare: number }>('/api/orders', {
+  create: (token: string, order: CreateOrderPayload) =>
+    request<{ orderId: string; quotedFare: number; trackingToken: string; status: string }>('/api/orders', {
       method: 'POST',
       body: JSON.stringify(order),
       token,

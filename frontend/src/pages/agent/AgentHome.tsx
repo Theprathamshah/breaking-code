@@ -4,8 +4,6 @@ import { useAuth, useUser } from '@clerk/clerk-react'
 import {
   Truck,
   MapPin,
-  Clock,
-  Package,
   ChevronRight,
   Radio,
   IndianRupee,
@@ -25,8 +23,7 @@ export function AgentHome() {
   const { user } = useUser()
   const qc = useQueryClient()
   const [selectedStop, setSelectedStop] = useState<RouteStop | null>(null)
-  const [agentId, setAgentId] = useState<string | null>(null)
-  const [routeId, setRouteId] = useState<string | null>(null)
+  const [agentId] = useState<string | null>(null)
 
   // In a real app, agentId comes from user metadata (set during onboarding)
   const mockAgentId = agentId ?? (user?.publicMetadata?.agentId as string | undefined) ?? null
@@ -44,7 +41,6 @@ export function AgentHome() {
         (r) => r.agent_id === mockAgentId && r.status !== 'completed',
       )
       if (!myRoute) return null
-      setRouteId(myRoute.id)
       return routesApi.get(token ?? '', myRoute.id)
     },
     enabled: !!mockAgentId,
