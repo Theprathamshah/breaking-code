@@ -221,7 +221,7 @@ export interface DeliveryEvent {
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
-export type UserRole = 'admin' | 'dispatcher' | 'agent' | 'customer'
+export type UserRole = 'admin' | 'dispatcher' | 'agent' | 'seller' | 'customer'
 
 export interface AuthContext {
   userId: string

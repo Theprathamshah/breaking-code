@@ -379,4 +379,241 @@ d2.patch('/api/routes/:id/activate', requireAuth('admin', 'dispatcher'), async (
   })
 })
 
+// ── GET /api/hubs ─────────────────────────────────────────────────────────────
+// List hubs for the tenant. Used by Optimize Route modal and agent assignment.
+
+d2.get('/api/hubs', requireAuth('admin', 'dispatcher'), async (c) => {
+  const auth = c.get('auth') as AuthContext
+  const { results } = await c.env.DB.prepare(
+    'SELECT * FROM hubs WHERE tenant_id = ? ORDER BY name ASC',
+  )
+    .bind(auth.orgId)
+    .all()
+  return c.json({ hubs: results })
+})
+
+// ── POST /api/hubs ────────────────────────────────────────────────────────────
+// Create a new hub. Admin only.
+
+d2.post('/api/hubs', requireAuth('admin'), async (c) => {
+  const auth = c.get('auth') as AuthContext
+  const body = await c.req.json<{
+    name: string
+    address: string
+    lat: number
+    lng: number
+  }>()
+
+  if (!body.name || !body.address || body.lat == null || body.lng == null) {
+    return c.json({ error: 'name, address, lat, lng are required' }, 400)
+  }
+
+  const hubId = `hub_${nanoid()}`
+  await c.env.DB.prepare(
+    'INSERT INTO hubs (id, tenant_id, name, address, lat, lng) VALUES (?, ?, ?, ?, ?, ?)',
+  )
+    .bind(hubId, auth.orgId, body.name, body.address, body.lat, body.lng)
+    .run()
+
+  const hub = await c.env.DB.prepare('SELECT * FROM hubs WHERE id = ?').bind(hubId).first()
+  return c.json(hub, 201)
+})
+
+// ── POST /api/agents ──────────────────────────────────────────────────────────
+// Register a new delivery agent. Admin only.
+
+d2.post('/api/agents', requireAuth('admin'), async (c) => {
+  const auth = c.get('auth') as AuthContext
+  const body = await c.req.json<{
+    clerkUserId: string
+    name: string
+    phone?: string
+    vehicleType?: 'bike' | 'scooter' | 'van' | 'cycle'
+    hubId?: string
+    commissionPct?: number
+  }>()
+
+  if (!body.clerkUserId || !body.name) {
+    return c.json({ error: 'clerkUserId and name are required' }, 400)
+  }
+
+  const validVehicles = ['bike', 'scooter', 'van', 'cycle']
+  if (body.vehicleType && !validVehicles.includes(body.vehicleType)) {
+    return c.json({ error: `vehicleType must be one of: ${validVehicles.join(', ')}` }, 400)
+  }
+
+  // Verify hub belongs to tenant if provided
+  if (body.hubId) {
+    const hub = await c.env.DB.prepare(
+      'SELECT id FROM hubs WHERE id = ? AND tenant_id = ? LIMIT 1',
+    )
+      .bind(body.hubId, auth.orgId)
+      .first()
+    if (!hub) return c.json({ error: 'Hub not found' }, 404)
+  }
+
+  const agentId = `agent_${nanoid()}`
+  await c.env.DB.prepare(
+    `INSERT INTO delivery_agents
+       (id, tenant_id, clerk_user_id, name, phone, vehicle_type, hub_id, commission_pct)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      agentId,
+      auth.orgId,
+      body.clerkUserId,
+      body.name,
+      body.phone ?? null,
+      body.vehicleType ?? 'bike',
+      body.hubId ?? null,
+      body.commissionPct ?? 80,
+    )
+    .run()
+
+  const agent = await c.env.DB.prepare('SELECT * FROM delivery_agents WHERE id = ?')
+    .bind(agentId)
+    .first()
+  return c.json(agent, 201)
+})
+
+// ── GET /api/routes/:id/stops/:stopId ────────────────────────────────────────
+// Single stop with joined order data. Called by D4 (agent PWA).
+
+d2.get('/api/routes/:id/stops/:stopId', requireAuth('admin', 'dispatcher', 'agent'), async (c) => {
+  const auth = c.get('auth') as AuthContext
+  const routeId = c.req.param('id')
+  const stopId = c.req.param('stopId')
+
+  const route = await c.env.DB.prepare(
+    'SELECT id, agent_id FROM routes WHERE id = ? AND tenant_id = ? LIMIT 1',
+  )
+    .bind(routeId, auth.orgId)
+    .first<{ id: string; agent_id: string | null }>()
+
+  if (!route) return c.json({ error: 'Route not found' }, 404)
+
+  if (auth.role === 'agent') {
+    const agent = await c.env.DB.prepare(
+      'SELECT id FROM delivery_agents WHERE clerk_user_id = ? AND tenant_id = ? LIMIT 1',
+    )
+      .bind(auth.userId, auth.orgId)
+      .first<{ id: string }>()
+
+    if (!agent || route.agent_id !== agent.id) {
+      return c.json({ error: 'Forbidden' }, 403)
+    }
+  }
+
+  const stop = await c.env.DB.prepare(
+    `SELECT
+       rs.id            AS stop_id,
+       rs.sequence_no, rs.status, rs.eta,
+       rs.actual_arrival_at, rs.actual_departure_at,
+       rs.failure_reason, rs.distance_from_prev_km,
+       o.id             AS order_id,
+       o.customer_name, o.customer_phone, o.customer_email,
+       o.address, o.lat, o.lng,
+       o.parcel_weight, o.parcel_size,
+       o.delivery_window_start, o.delivery_window_end,
+       o.status         AS order_status,
+       o.notes, o.tracking_token
+     FROM route_stops rs
+     JOIN orders o ON o.id = rs.order_id
+     WHERE rs.id = ? AND rs.route_id = ?
+     LIMIT 1`,
+  )
+    .bind(stopId, routeId)
+    .first()
+
+  if (!stop) return c.json({ error: 'Stop not found' }, 404)
+
+  return c.json(stop)
+})
+
+// ── PATCH /api/routes/:id/stops/:stopId/status ────────────────────────────────
+// D2 owns: heading_to only. D4 owns: arrived, delivered, failed.
+// Side effects: orders.status → in_transit, publishes stop.departed queue event.
+
+d2.patch(
+  '/api/routes/:id/stops/:stopId/status',
+  requireAuth('admin', 'dispatcher', 'agent'),
+  async (c) => {
+    const auth = c.get('auth') as AuthContext
+    const routeId = c.req.param('id') as string
+    const stopId = c.req.param('stopId') as string
+    const body = await c.req.json<{ status: string }>()
+
+    if (body.status !== 'heading_to') {
+      return c.json({ error: 'Only "heading_to" is allowed via this endpoint' }, 400)
+    }
+
+    const route = await c.env.DB.prepare(
+      "SELECT id, agent_id FROM routes WHERE id = ? AND tenant_id = ? AND status = 'active' LIMIT 1",
+    )
+      .bind(routeId, auth.orgId)
+      .first<{ id: string; agent_id: string | null }>()
+
+    if (!route) return c.json({ error: 'Route not found or not active' }, 404)
+
+    if (auth.role === 'agent') {
+      const agent = await c.env.DB.prepare(
+        'SELECT id FROM delivery_agents WHERE clerk_user_id = ? AND tenant_id = ? LIMIT 1',
+      )
+        .bind(auth.userId, auth.orgId)
+        .first<{ id: string }>()
+
+      if (!agent || route.agent_id !== agent.id) {
+        return c.json({ error: 'Forbidden' }, 403)
+      }
+    }
+
+    const stop = await c.env.DB.prepare(
+      `SELECT rs.id, rs.order_id, rs.eta,
+              o.tracking_token, o.status AS order_status
+       FROM route_stops rs
+       JOIN orders o ON o.id = rs.order_id
+       WHERE rs.id = ? AND rs.route_id = ? AND rs.status = 'pending'
+       LIMIT 1`,
+    )
+      .bind(stopId, routeId)
+      .first<{
+        id: string
+        order_id: string
+        eta: string | null
+        tracking_token: string | null
+        order_status: string
+      }>()
+
+    if (!stop) return c.json({ error: 'Stop not found or not in pending state' }, 404)
+
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        "UPDATE route_stops SET status = 'heading_to', updated_at = datetime('now') WHERE id = ?",
+      ).bind(stopId),
+      c.env.DB.prepare(
+        "UPDATE orders SET status = 'in_transit', updated_at = datetime('now') WHERE id = ? AND status NOT IN ('delivered','failed')",
+      ).bind(stop.order_id),
+    ])
+
+    // ETA seconds from now — KV cache first, fall back to DB column
+    let etaSeconds = 0
+    const kvEta = await c.env.KV.get<{ eta: string }>(`eta:stop:${stopId}`, 'json')
+    const etaStr = kvEta?.eta ?? stop.eta
+    if (etaStr) {
+      etaSeconds = Math.max(0, Math.round((new Date(etaStr).getTime() - Date.now()) / 1000))
+    }
+
+    await c.env.QUEUE_STOP_DEPARTED.send({
+      type: 'stop.departed',
+      stopId,
+      orderId: stop.order_id,
+      agentId: route.agent_id ?? (auth.userId as string),
+      trackingToken: stop.tracking_token ?? '',
+      etaSeconds,
+    })
+
+    return c.json({ success: true, stopId, orderId: stop.order_id, status: 'heading_to', etaSeconds })
+  },
+)
+
 export default d2

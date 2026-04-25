@@ -5,10 +5,7 @@ import {
   Truck,
   Package,
   Map,
-  Users,
-  IndianRupee,
   LogOut,
-  ChevronDown,
 } from 'lucide-react'
 
 interface NavItem {
@@ -18,11 +15,9 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
-  { to: '/dispatch', icon: <Map size={16} />,         label: 'Dispatch' },
-  { to: '/seller',   icon: <Package size={16} />,     label: 'Orders' },
-  { to: '/agent',    icon: <Truck size={16} />,       label: 'Agent View' },
-  { to: '/billing',  icon: <IndianRupee size={16} />, label: 'Billing' },
-  { to: '/agents',   icon: <Users size={16} />,       label: 'Agents' },
+  { to: '/dispatch', icon: <Map size={16} />,     label: 'Dispatch' },
+  { to: '/seller',   icon: <Package size={16} />, label: 'Orders' },
+  { to: '/agent',    icon: <Truck size={16} />,   label: 'Agent View' },
 ]
 
 interface ShellProps {

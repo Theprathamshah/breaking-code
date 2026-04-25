@@ -31,6 +31,28 @@ async function request<T>(
   return res.json<T>()
 }
 
+// ── Hubs ──────────────────────────────────────────────────────────────────────
+
+export interface Hub {
+  id: string
+  name: string
+  address: string
+  lat: number
+  lng: number
+}
+
+export const hubsApi = {
+  list: (token: string) =>
+    request<{ hubs: Hub[] }>('/api/hubs', { token }),
+
+  create: (token: string, payload: { name: string; address: string; lat: number; lng: number }) =>
+    request<Hub>('/api/hubs', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      token,
+    }),
+}
+
 // ── Agents ────────────────────────────────────────────────────────────────────
 
 export interface Agent {
@@ -52,6 +74,24 @@ export const agentsApi = {
     const q = new URLSearchParams(params as Record<string, string>).toString()
     return request<{ agents: Agent[] }>(`/api/agents${q ? `?${q}` : ''}`, { token })
   },
+
+  create: (
+    token: string,
+    payload: {
+      clerkUserId: string
+      name: string
+      phone?: string
+      vehicleType?: 'bike' | 'scooter' | 'van' | 'cycle'
+      hubId?: string
+      commissionPct?: number
+    },
+  ) =>
+    request<Agent>('/api/agents', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      token,
+    }),
+
   updateStatus: (
     token: string,
     agentId: string,
@@ -147,6 +187,15 @@ export const routesApi = {
       body: JSON.stringify({ agentId }),
       token,
     }),
+
+  getStop: (token: string, routeId: string, stopId: string) =>
+    request<RouteStop>(`/api/routes/${routeId}/stops/${stopId}`, { token }),
+
+  departStop: (token: string, routeId: string, stopId: string) =>
+    request<{ success: boolean; etaSeconds: number }>(
+      `/api/routes/${routeId}/stops/${stopId}/status`,
+      { method: 'PATCH', body: JSON.stringify({ status: 'heading_to' }), token },
+    ),
 }
 
 // ── Orders ────────────────────────────────────────────────────────────────────
@@ -185,6 +234,90 @@ export const ordersApi = {
       body: JSON.stringify(order),
       token,
     }),
+}
+
+// ── Events / Audit Trail (D3) ─────────────────────────────────────────────────
+
+export interface DeliveryEvent {
+  id: string
+  actorType: 'system' | 'seller' | 'admin' | 'agent' | 'customer'
+  eventType: string
+  lat: number | null
+  lng: number | null
+  metadata: Record<string, unknown>
+  createdAt: string
+}
+
+export interface AgentDeliveryEvent extends DeliveryEvent {
+  orderId: string
+}
+
+export interface TimelineMilestone {
+  status: string
+  label: string
+  at: string | null
+  done: boolean
+}
+
+export interface AppendEventPayload {
+  orderId: string
+  agentId?: string | null
+  actorType: DeliveryEvent['actorType']
+  eventType: string
+  lat?: number | null
+  lng?: number | null
+  metadata?: Record<string, unknown>
+}
+
+export const eventsApi = {
+  appendEvent: (token: string, payload: AppendEventPayload) =>
+    request<{ eventId: string }>('/api/events', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      token,
+    }),
+
+  getOrderEvents: (
+    token: string,
+    orderId: string,
+    params?: { limit?: number; cursor?: string; eventType?: string },
+  ) => {
+    const q = new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(params ?? {})
+          .filter(([, v]) => v !== undefined)
+          .map(([k, v]) => [k, String(v)]),
+      ),
+    ).toString()
+    return request<{ orderId: string; events: DeliveryEvent[]; nextCursor: string | null }>(
+      `/api/orders/${orderId}/events${q ? `?${q}` : ''}`,
+      { token },
+    )
+  },
+
+  getOrderTimeline: (token: string, orderId: string) =>
+    request<{ orderId: string; milestones: TimelineMilestone[] }>(
+      `/api/orders/${orderId}/timeline`,
+      { token },
+    ),
+
+  getAgentEvents: (
+    token: string,
+    agentId: string,
+    params?: { date?: string; limit?: number },
+  ) => {
+    const q = new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(params ?? {})
+          .filter(([, v]) => v !== undefined)
+          .map(([k, v]) => [k, String(v)]),
+      ),
+    ).toString()
+    return request<{ agentId: string; events: AgentDeliveryEvent[] }>(
+      `/api/agents/${agentId}/events${q ? `?${q}` : ''}`,
+      { token },
+    )
+  },
 }
 
 // ── Tracking (public) ─────────────────────────────────────────────────────────

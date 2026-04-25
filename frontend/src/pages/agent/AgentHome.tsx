@@ -228,8 +228,16 @@ export function AgentHome() {
       </main>
 
       {/* Stop detail sheet */}
-      {selectedStop && (
-        <StopSheet stop={selectedStop} onClose={() => setSelectedStop(null)} />
+      {selectedStop && routeId && (
+        <StopSheet
+          stop={selectedStop}
+          routeId={routeId}
+          onClose={() => setSelectedStop(null)}
+          onDeparted={() => {
+            setSelectedStop(null)
+            qc.invalidateQueries({ queryKey: ['agent-route'] })
+          }}
+        />
       )}
 
       {/* Bottom nav */}
@@ -371,7 +379,27 @@ function StopCard({ stop, onOpen }: { stop: RouteStop; onOpen: () => void }) {
 
 // ── Stop sheet (bottom sheet modal) ───────────────────────────────────────────
 
-function StopSheet({ stop, onClose }: { stop: RouteStop; onClose: () => void }) {
+function StopSheet({
+  stop,
+  routeId,
+  onClose,
+  onDeparted,
+}: {
+  stop: RouteStop
+  routeId: string
+  onClose: () => void
+  onDeparted: () => void
+}) {
+  const { getToken } = useAuth()
+
+  const departMutation = useMutation({
+    mutationFn: async () => {
+      const token = await getToken({ template: 'default' })
+      return routesApi.departStop(token ?? '', routeId, stop.id)
+    },
+    onSuccess: onDeparted,
+  })
+
   return (
     <>
       <div
@@ -456,10 +484,18 @@ function StopSheet({ stop, onClose }: { stop: RouteStop; onClose: () => void }) 
             variant="primary"
             size="lg"
             style={{ width: '100%', justifyContent: 'center' }}
+            loading={departMutation.isPending}
+            disabled={stop.status === 'heading_to'}
+            onClick={() => departMutation.mutate()}
           >
             <Navigation size={16} />
-            Heading to this Stop
+            {stop.status === 'heading_to' ? 'En Route' : 'Heading to this Stop'}
           </Button>
+          {departMutation.isError && (
+            <p style={{ fontSize: 12, color: 'var(--signal)', textAlign: 'center' }}>
+              {(departMutation.error as Error).message}
+            </p>
+          )}
           <Button variant="ghost" size="md" onClick={onClose} style={{ width: '100%', justifyContent: 'center' }}>
             Close
           </Button>

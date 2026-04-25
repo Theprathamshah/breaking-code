@@ -401,3 +401,84 @@ it('marks all milestones before delivered as done', () => {
   expect(timeline.filter(m => m.done).length).toBe(5)
 })
 ```
+
+---
+
+## 10. Frontend Integration
+
+D3 surfaces in three frontend contexts: admin audit trail, seller timeline, and agent activity log.
+
+### 10.1 API Layer (`frontend/src/lib/api.ts`)
+
+```ts
+// Types
+export interface DeliveryEvent {
+  id: string
+  actorType: 'system' | 'seller' | 'admin' | 'agent' | 'customer'
+  eventType: string
+  lat: number | null
+  lng: number | null
+  metadata: Record<string, unknown>
+  createdAt: string
+}
+
+export interface TimelineMilestone {
+  status: string
+  label: string
+  at: string | null
+  done: boolean
+}
+
+// eventsApi
+export const eventsApi = {
+  // Admin / seller: full raw event log for an order
+  getOrderEvents: (token: string, orderId: string, params?: { limit?: number; cursor?: string; eventType?: string }) => { ... }
+
+  // Seller / tracking: milestone timeline for an order
+  getOrderTimeline: (token: string, orderId: string) => { ... }
+
+  // Admin: agent activity on a given date
+  getAgentEvents: (token: string, agentId: string, params?: { date?: string; limit?: number }) => { ... }
+
+  // Internal / agent: append a single event (called by D4 flows)
+  appendEvent: (token: string, payload: AppendEventPayload) => { ... }
+}
+```
+
+### 10.2 Pages & Components
+
+#### `OrderAuditTrail` (admin)
+**File:** `frontend/src/pages/dispatch/OrderAuditTrail.tsx`
+
+Slide-in panel opened from `RouteDetail` when an admin clicks an order stop. Shows the full raw event log for that order using `eventsApi.getOrderEvents`. Each event row renders: actor badge, event type, timestamp, and expandable metadata JSON.
+
+Layout:
+```
+[actor badge]  event.type                    HH:MM:SS
+               ↳ metadata preview (collapsed by default)
+```
+
+Filters: event type dropdown, actor type toggle group.
+
+#### `SellerOrderTimeline` (seller)
+**File:** `frontend/src/pages/seller/SellerOrderTimeline.tsx`
+
+Rendered inside `SellerDashboard` when a seller selects an order. Calls `eventsApi.getOrderTimeline` and renders the existing `Timeline` component with milestones. Polls every 30 s while order is not in a terminal state.
+
+#### `AgentActivityLog` (admin)
+Rendered inside `DispatchDashboard` agent detail panel. Calls `eventsApi.getAgentEvents` for today's date. Lists agent actions (stop.departed, stop.arrived, otp.verified, etc.) in reverse chronological order.
+
+### 10.3 Routing
+
+No new routes added. D3 surfaces are panels/drawers within existing dashboard pages:
+- `DispatchDashboard → RouteDetail → [stop row click] → OrderAuditTrail drawer`
+- `SellerDashboard → [order row click] → SellerOrderTimeline drawer`
+
+### 10.4 Auth Notes
+
+| Endpoint | Frontend caller | Auth method |
+|---|---|---|
+| `GET /api/orders/:id/events` | Admin in DispatchDashboard | Clerk JWT (`admin`/`dispatcher`) |
+| `GET /api/orders/:id/timeline` | Seller in SellerDashboard | Clerk JWT (`seller`) |
+| `GET /api/agents/:id/events` | Admin in DispatchDashboard | Clerk JWT (`admin`/`dispatcher`) |
+| `POST /api/events` | Not called from frontend (D4 internal only) | `X-Internal-Token` |
